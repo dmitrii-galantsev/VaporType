@@ -1,0 +1,11 @@
+{
+  "name": "VaporType",
+  "author": "VaporType contributors",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["keyboard", "input", "accessibility"],
+    "description": "Swipe typing with the trackpads or touchscreen, word suggestions, autocorrect and Esc/Ctrl/Alt keys for the Steam on-screen keyboard.",
+    "image": "https://opengraph.githubassets.com/1/dmitrii-galantsev/VaporType"
+  }
+}

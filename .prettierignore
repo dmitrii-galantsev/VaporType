@@ -1,0 +1,12 @@
+dist/
+out/
+.steamui/
+pnpm-lock.yaml
+keyboard/data/words.js
+keyboard/data/lm.js
+keyboard/data/inputs/
+keyboard/bench/corpora/
+keyboard/bench/geometry.json
+*.md
+LICENSE
+test-record.json

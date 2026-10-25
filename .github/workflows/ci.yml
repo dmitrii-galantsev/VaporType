@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          pip install ruff==0.16.10
+      - name: ESLint and TypeScript
+        run: pnpm exec eslint . && pnpm exec tsc --noEmit
+      - name: Ruff
+        run: ruff check . && ruff format --check .
+      - name: Prettier
+        run: pnpm exec prettier --check .
+      - name: Shell scripts
+        run: shellcheck install.sh uninstall.sh scripts/*.sh test/*.sh keyboard/sim/test-all.sh
+      - name: Tests (engine gates, backend, plugin build, provenance, packaging, privacy scan)
+        run: pnpm test

@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - name: Tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: pnpm test
+      - name: Build the zip from the simulator-tested files
+        run: |
+          pnpm run build
+          node scripts/provenance.mjs verify
+          sh scripts/package.sh
+          (cd out && sha256sum VaporType.zip > VaporType.zip.sha256)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/VaporType.zip
+            out/VaporType.zip.sha256
+          generate_release_notes: true
+      - name: Stage the zip for GitHub Pages
+        run: |
+          mkdir -p pages
+          cp out/VaporType.zip out/VaporType.zip.sha256 pages/
+          printf '<!doctype html><meta http-equiv="refresh" content="0; url=https://github.com/%s">\n' "$GITHUB_REPOSITORY" > pages/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+      - uses: actions/deploy-pages@v4

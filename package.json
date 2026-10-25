@@ -1,0 +1,67 @@
+{
+  "name": "vaportype",
+  "version": "0.2.7",
+  "description": "VaporType: swipe typing, word suggestions, autocorrect and Esc/Ctrl/Alt keys for the Steam Deck on-screen keyboard",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c && node scripts/copy-keyboard.mjs",
+    "watch": "rollup -c -w",
+    "notices": "node scripts/notices.mjs",
+    "lint": "eslint . && tsc --noEmit && ruff check .",
+    "format": "prettier --write . && ruff format .",
+    "format:check": "prettier --check . && ruff format --check .",
+    "test": "pnpm run build && node scripts/notices.mjs --check && node scripts/provenance.mjs snapshot > /dev/null && python3 test/backend-test.py && node keyboard/bench/gates.mjs && sh test/package-test.sh && sh scripts/check-private.sh",
+    "test:sim": "sh scripts/test-release.sh",
+    "package": "pnpm run build && sh scripts/package.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmitrii-galantsev/VaporType.git"
+  },
+  "keywords": [
+    "decky",
+    "plugin",
+    "steam-deck",
+    "keyboard",
+    "swipe"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dmitrii-galantsev/VaporType/issues"
+  },
+  "homepage": "https://github.com/dmitrii-galantsev/VaporType#readme",
+  "devDependencies": {
+    "@decky/rollup": "^1.0.2",
+    "@decky/ui": "^4.11.0",
+    "@eslint/js": "^10.0.1",
+    "@rollup/rollup-linux-x64-musl": "^4.53.3",
+    "@types/react": "19.1.1",
+    "@types/react-dom": "19.1.1",
+    "@types/webpack": "^5.28.5",
+    "esbuild": "^0.25",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "puppeteer-core": "^24",
+    "rollup": "^4.53.3",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.72.0"
+  },
+  "dependencies": {
+    "@decky/api": "^1.1.3",
+    "react-icons": "^5.3.0",
+    "tslib": "^2.7.0"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "react",
+        "react-dom"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.9"
+}
