@@ -1,13 +1,16 @@
 # VaporType
 
-A [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin that adds swipe typing, word suggestions,
-autocorrect and Esc / Ctrl / Alt keys to the Steam Deck's own on-screen keyboard. It also fixes a Steam bug that makes
-trackpad typing slower every time the keyboard opens.
+Swipe typing, word suggestions, autocorrect and Esc / Ctrl / Alt keys for the Steam Deck's own on-screen keyboard.
+It is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin.
 
-![Swiping "hello world" with both trackpads](docs/media/swipe.gif)
+![Swiping "hello" across both trackpads, then "great" with the left one](docs/media/swipe.gif)
 
-It patches Steam's keyboard while Steam runs, so a Steam update can break it. When the keyboard functions it needs
-are missing, VaporType switches itself off.
+The strip under the keyboard in these clips is not part of VaporType: it shows where each thumb is on its pad and
+when the pad is clicked.
+
+VaporType patches Steam's keyboard while Steam runs, so a Steam update can break it. If the keyboard code it needs
+has changed, it turns itself off and Steam's keyboard works as before. It also fixes a Steam bug that makes
+trackpad typing slower each time the keyboard opens.
 
 ## Install
 
@@ -20,39 +23,78 @@ Needs [Decky Loader](https://decky.xyz/) 3.0 or newer.
 
 Install the same URL again to update. Learned words and settings are kept.
 
-## Typing
+## Where the keys are on each pad
 
-Each pad reaches just past the middle of the keyboard. Letters fill most of the pad; the other keys sit at its edges.
+![The keys each trackpad covers: the left pad from Esc to U, J and N, the right pad from Y, H and B to Backspace](docs/media/pads.png)
 
-- **Tap**: click a pad on a letter, or tap the screen.
-- **Swipe**: click and hold on the first letter, drag through the word, release. A word can start on one pad and
-  continue on the other. Swiping also works on the touchscreen.
-- **Suggestions**: pick a word above the keys with a pad, touch or D-pad + A. Space corrects a mistyped word;
-  Backspace right after a correction restores your letters, right after a swipe deletes the word.
-- **Cursor**: hold the space bar and slide.
-- **Ctrl / Alt**: tap once for the next key, twice to lock. Hold LB / RB to hold Ctrl / Alt.
-- **Settings**: hold the emoji key. For one-thumb typing choose Input → Pad reach → **Right pad only**.
+Each pad covers its own side of the keyboard, and both reach the middle keys Y U H J B N. The three letter rows fill
+70 % of each pad's height and the other rows are pushed to its edges, so a letter is about 7.6 mm tall on the pad
+instead of 5.3 mm.
 
-| | |
-|---|---|
-| ![Typing "teh" and space corrects it to "the"](docs/media/autocorrect.gif) | ![Holding the space bar and sliding moves the cursor](docs/media/cursor.gif) |
+To change this, hold the emoji key for settings:
+
+- Input → **Pad reach**: **Past middle** gives each pad three quarters of the keyboard, **Whole** lets either thumb
+  swipe any word, and **Right only** puts the whole keyboard on the right pad for one-handed typing.
+- Typing → **Typing mode**: **Standard** maps the pads as Steam does, without the taller letters.
+
+## Swiping
+
+Click a pad on the first letter and keep it pressed, slide through the rest of the letters, and let go. VaporType
+types the word and puts a space between it and the word before.
+
+A word with letters on both halves uses both pads: keep the first pad pressed while the other pad clicks or slides
+over its letters. The word ends when neither pad is pressed. In the clip above, the right pad holds H, the left pad
+clicks E, and the right pad slides on to L and O.
+
+Backspace right after a swipe deletes the whole word. Swiping also works with a finger on the touchscreen.
+
+## Tapping and autocorrect
+
+![Tapping t-e-h: Space types "the" instead, and Backspace brings back "teh"](docs/media/autocorrect.gif)
+
+Click a pad on a key to type it, or touch the screen. The left word in the suggestion row is what you typed. When the
+middle one is blue, Space replaces your word with it. Backspace right after a correction puts back what you typed.
+
+## Suggestions
+
+![Typing "tom" and clicking "tomorrow" in the suggestion row](docs/media/suggest.gif)
+
+Pick a suggestion with a pad click, a touch, or the D-pad and A. It replaces the letters you typed and adds a space.
+
+## Moving the cursor
+
+![Holding Space and sliding left moves the cursor back to "y|u", then tapping O fixes "yu" to "you"](docs/media/cursor.gif)
+
+Click Space and keep it pressed, then slide left or right. The cursor moves with your thumb; let go where you want
+to type.
+
+## Other keys
+
+- **Esc** is left of the number row; **Ctrl** and **Alt** are at the bottom left. Tap Ctrl or Alt once for the next
+  key only, twice to keep it on, a third time to turn it off. Hold LB for Ctrl, RB for Alt.
+- **Settings**: hold the emoji key (the one with the gear).
+
+![The settings panel, Typing tab](docs/media/settings.png)
 
 ## Privacy
 
-Nothing leaves the Deck. Learning and the typed-text line stay off until you allow them on the first-use card.
+Nothing leaves the Deck. Learning new words and showing the typed text above the keys stay off until you turn them
+on in the first-use card.
 
-- Learned words are kept in `~/homebrew/settings/vaportype/` and Steam's local storage. Settings → Words lists them; tap one to forget it.
-- VaporType can't tell a password field from any other. Before typing a password, turn on **Private mode** (Settings
-  → System, or hold the typed-text line): no learning, autocorrect, typed text or log.
+- Learned words are kept in `~/homebrew/settings/vaportype/` and in Steam's local storage. Settings → Words lists
+  them; tap one to forget it.
+- VaporType can't tell a password field from any other field. Turn on **Private mode** before typing a password
+  (Settings → System, or hold the typed-text line): no learning, no autocorrect, no typed text, no log.
 - The typing log is off unless you turn it on (`~/homebrew/data/vaportype/typing-log.jsonl`).
-- **Forget everything** (keyboard settings or Quick Access → VaporType) deletes learned words, backups and the log.
+- **Forget everything** (keyboard settings, or Quick Access → VaporType) deletes learned and blocked words, their
+  backups and the log.
 
 ## Problems
 
-- Quick Access → Decky → VaporType → turn off **Enabled** to get Steam's keyboard back at once. If that panel won't
+- To get Steam's keyboard back at once: Quick Access → Decky → VaporType → turn off **Enabled**. If that panel won't
   open, disable VaporType in Decky settings → Plugins and restart the Deck.
-- Swiping, suggestions and autocorrect need English QWERTY. Ctrl / Alt pause swiping. The back grips don't work while the keyboard is
-  open.
+- Swiping, suggestions and autocorrect need the English QWERTY layout. Swiping pauses while Ctrl or Alt is on. The
+  back grips don't work while the keyboard is open.
 - [Open an issue](https://github.com/dmitrii-galantsev/VaporType/issues/new?template=bug_report.md) with the status
   lines from the Quick Access panel and your Steam update channel.
 

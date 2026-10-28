@@ -71,7 +71,8 @@ pnpm run test:sim                         # everything, in parallel
 node keyboard/sim/test.mjs                # output path: rolled typing, Esc/Ctrl/Alt, chords, stop and re-inject
 node keyboard/sim/swipe-test.mjs          # swipe typing end to end
 node test/plugin-sim.mjs                  # the plugin end to end: load, save, disable, restart, forget, unload, call counts
-node keyboard/sim/media.mjs               # re-record the README GIFs into docs/media (needs ffmpeg)
+node keyboard/sim/media.mjs               # re-record the README GIFs and pictures into docs/media (needs ffmpeg);
+                                          # one of them: node keyboard/sim/media.mjs docs/media swipe
 ```
 
 `fetch-steamui.sh` takes any ssh destination and, optionally, the remote steamui folder (default
