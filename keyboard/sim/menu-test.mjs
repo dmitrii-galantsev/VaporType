@@ -153,44 +153,54 @@ async function scenario(title, fn) {
   );
 }
 
-await scenario("frame: header with wordmark and status, one-line tab bar of five tabs with the LB / RB hint, footer hints", async () => {
+await scenario("frame: one 26 px bar of five equal tabs and ✕, two columns split at the pads' middle, footer hints", async () => {
   await openPanel();
   await sleep(300);
   const f = await page.evaluate(() => {
     const q = (s) => document.querySelector(s);
     const tabs = [...document.querySelectorAll('.osk-set [data-key^="OSKSet_tab_"]')];
     const rects = tabs.map((t) => t.getBoundingClientRect());
+    const panel = q(".osk-set").getBoundingClientRect();
+    const cols = [...document.querySelectorAll(".osk-set-page.on > .osk-set-col")].map((c) => c.getBoundingClientRect());
+    const close = q('[data-key="OSKSet_close"]').getBoundingClientRect();
     return {
-      title: q(".osk-set-head .osk-set-title")?.textContent,
-      chips: q(".osk-set-chips")?.textContent ?? "",
+      head: q(".osk-set-head, .osk-set-title, .osk-set-chips, .osk-set-navhint") === null,
       tabs: tabs.map((t) => t.getAttribute("data-key").replace("OSKSet_tab_", "")),
-      oneLine: rects.every((r) => Math.abs(r.top - rects[0].top) < 1 && r.height < 40),
+      oneLine: rects.every((r) => Math.abs(r.top - rects[0].top) < 1 && Math.abs(r.width - rects[0].width) < 1),
+      span: Math.round(rects.at(-1).right - rects[0].left + close.width) === Math.round(panel.width),
       icons: tabs.every((t) => !!t.querySelector(".osk-set-ico")),
-      hint: q(".osk-set-tabs .osk-set-navhint")?.textContent ?? null,
-      head: q(".osk-set-head")?.getBoundingClientRect().height,
       bar: q(".osk-set-tabs")?.getBoundingClientRect().height,
       foot: [...(q(".osk-set-foot .osk-set-hint")?.children ?? [])].find((e) => !e.hidden)?.textContent ?? "",
+      footH: q(".osk-set-foot")?.getBoundingClientRect().height,
+      cols: cols.map((c) => [Math.round(c.left - panel.left), Math.round(c.right - panel.left)]),
+      mid: Math.round(panel.width / 2),
       sections: [...document.querySelectorAll(".osk-set-page.on .osk-set-sec")].map((e) => e.textContent),
     };
   });
   const p = await panel();
+  const [l, r] = f.cols;
   const ok =
     p.focus === "OSKSet_c_mode" &&
     p.rings === 1 &&
     p.visible &&
-    f.title === "VaporType" &&
-    /Big letter keys · \d+ words? · v\d+/.test(f.chips) &&
+    f.head &&
     f.tabs.join() === TABS.join() &&
     f.oneLine &&
+    f.span &&
     f.icons &&
-    f.hint === "LB ◂ ▸ RB" &&
-    f.bar === 40 &&
+    f.bar === 26 &&
+    f.footH === 20 &&
     f.foot === "◂ ▸ChangeLB/RBTabsBClose" &&
-    f.sections.join() === "Layout,Spelling";
+    f.cols.length === 2 &&
+    l[1] <= f.mid &&
+    r[0] >= f.mid &&
+    f.mid - l[1] <= 8 &&
+    r[0] - f.mid <= 8 &&
+    f.sections.join() === "Keys,Spelling";
   return { ok, detail: JSON.stringify(f) };
 });
 
-await scenario("rows: label, one-line description and control on the right, at least 48 px tall", async () => {
+await scenario("rows: 12 px label, 10.5 px one-line description under it, control on the right, 36 px", async () => {
   await openPanel();
   const rows = await page.evaluate(() =>
     [...document.querySelectorAll(".osk-set-page.on .osk-set-row")].map((e) => {
@@ -200,26 +210,27 @@ await scenario("rows: label, one-line description and control on the right, at l
       const ctl = e.querySelector(".osk-set-switch, .osk-set-seg");
       return {
         k: e.getAttribute("data-key"),
-        h: r.height,
+        h: Math.round(r.height),
         label: l && parseFloat(getComputedStyle(l).fontSize),
         desc: d && parseFloat(getComputedStyle(d).fontSize),
-        oneLine: d && d.getBoundingClientRect().height < 20,
-        right: ctl && r.right - ctl.getBoundingClientRect().right < 20,
+        under: d && d.getBoundingClientRect().top >= l.getBoundingClientRect().bottom - 1,
+        oneLine: d && d.getBoundingClientRect().height < 16,
+        right: ctl && r.right - ctl.getBoundingClientRect().right < 12,
       };
     }),
   );
-  const bad = rows.filter((r) => r.h < 48 || r.label !== 16 || r.desc !== 13 || !r.oneLine || !r.right);
+  const bad = rows.filter((r) => r.h !== 36 || r.label !== 12 || r.desc !== 10.5 || !r.under || !r.oneLine || !r.right);
   return { ok: rows.length === 7 && !bad.length, detail: `rows ${rows.length} bad ${JSON.stringify(bad)}` };
 });
 
-await scenario("the header counts learned words: 1 word, N words, the real count past the 30 shown", async () => {
-  const chips = () => page.evaluate(() => document.querySelector(".osk-set-chips")?.textContent ?? "");
+await scenario("the Words tab counts learned and blocked words, past the 12 shown", async () => {
+  const count = () => page.evaluate(() => document.querySelector(".osk-set-tab-count")?.textContent ?? "");
   const total = () => page.evaluate(() => Object.values(window.__oskEngine.exportUser().words).filter((u) => u?.c > 0).length);
   await page.evaluate(() => window.__oskTrackpadFix.forgetAll());
   await learn([["onlyword", 2]]);
   await openPanel();
   await sleep(300);
-  const one = await chips();
+  const one = await count();
   await closePanel();
   const many = [];
   for (let i = 0; i < 40; i++)
@@ -227,7 +238,7 @@ await scenario("the header counts learned words: 1 word, N words, the real count
   await learn(many);
   await openPanel();
   await sleep(300);
-  const lots = await chips();
+  const lots = await count();
   const n = await total();
   await gotoTab("words");
   const seg = await page.evaluate(() => document.querySelector('[data-key="OSKSet_v_list_0"]')?.textContent);
@@ -235,13 +246,13 @@ await scenario("the header counts learned words: 1 word, N words, the real count
   for (const [w] of many) await page.evaluate((w) => window.__oskEngine.forget(w), w);
   await page.evaluate(() => window.__oskEngine.forget("onlyword"));
   return {
-    ok: / · 1 word · /.test(one) && n === 41 && lots.includes(` · ${n} words · `) && seg === `Learned (${n})` && rows === 8,
-    detail: `${one} | ${lots} | total ${n} seg ${seg}`,
+    ok: one === "1" && n === 41 && lots === String(n) && seg === `Learned (${n})` && rows === 12,
+    detail: `${one} | ${lots} | total ${n} seg ${seg} rows ${rows}`,
   };
 });
 
-await scenario("footer hints name what each button does on the focused row, on one 13 px line", async () => {
-  await learn(Array.from({ length: 12 }, (_, i) => [`hintword${String.fromCharCode(97 + i)}`, 1]));
+await scenario("footer hints name what each button does on the focused row, on one 10.5 px line", async () => {
+  await learn(Array.from({ length: 20 }, (_, i) => [`hintword${String.fromCharCode(97 + i)}`, 1]));
   await openPanel();
   const hint = () =>
     page.evaluate(() => {
@@ -259,14 +270,14 @@ await scenario("footer hints name what each button does on the focused row, on o
   const toggle = await hint();
   await gotoTab("look");
   await press(A);
-  await press(DOWN);
+  for (let i = 0; i < 5; i++) await press(DOWN);
   const slider = await hint();
   await gotoTab("words");
   const tab = await hint();
   await press(DOWN);
   await press(DOWN);
   const item = await hint();
-  for (let i = 0; i < 12; i++) await page.evaluate((i) => window.__oskEngine.forget(`hintword${String.fromCharCode(97 + i)}`), i);
+  for (let i = 0; i < 20; i++) await page.evaluate((i) => window.__oskEngine.forget(`hintword${String.fromCharCode(97 + i)}`), i);
   const all = [seg, toggle, slider, tab, item];
   const ok =
     seg.text === "◂ ▸ChangeLB/RBTabsBClose" &&
@@ -274,11 +285,11 @@ await scenario("footer hints name what each button does on the focused row, on o
     slider.text === "◂ ▸ChangeLB/RBTabsBClose" &&
     tab.text === "◂ ▸ChangeASelectL2/R2PageLB/RBTabsBClose" &&
     item.text === "AForgetL2/R2PageLB/RBTabsBClose" &&
-    all.every((h) => h.lines === 1 && h.size === 13 && !h.clipped);
+    all.every((h) => h.lines === 1 && h.size === 10.5 && !h.clipped);
   return { ok, detail: JSON.stringify(all) };
 });
 
-await scenario("Look: the preview sits in the Look row and all four background sliders are visible without scrolling", async () => {
+await scenario("Look: the preview heads the Opacity column and all four sliders are visible without scrolling", async () => {
   await openPanel();
   await gotoTab("look");
   await press(A);
@@ -290,8 +301,9 @@ await scenario("Look: the preview sits in the Look row and all four background s
       return b.top >= page.top - 1 && b.bottom <= page.bottom + 1 && b.left >= page.left - 1 && b.right <= page.right + 1;
     };
     return {
-      inRow: !!pv?.closest('[data-key="OSKSet_c_theme"]'),
+      inRow: pv?.parentElement === document.querySelector('[data-key="OSKSet_s_keyAlpha"]')?.parentElement,
       height: pv?.getBoundingClientRect().height,
+      wide: pv?.getBoundingClientRect().width === pv?.parentElement.getBoundingClientRect().width,
       sliders: ["boardAlpha", "keyAlpha", "spaceAlpha", "stripAlpha"].map((k) =>
         inside(document.querySelector(`[data-key="OSKSet_s_${k}"]`)),
       ),
@@ -303,7 +315,13 @@ await scenario("Look: the preview sits in the Look row and all four background s
     };
   });
   const ok =
-    r.inRow && r.height <= 64 && r.sliders.every(Boolean) && r.tracks.every(Boolean) && r.scroll === 0 && r.focus === "OSKSet_c_theme";
+    r.inRow &&
+    r.wide &&
+    r.height <= 40 &&
+    r.sliders.every(Boolean) &&
+    r.tracks.every(Boolean) &&
+    r.scroll === 0 &&
+    r.focus === "OSKSet_c_theme";
   return { ok, detail: JSON.stringify(r) };
 });
 
@@ -362,9 +380,9 @@ await scenario("RT / LT behave like RB / LB where there is nothing to page", asy
   return { ok: a === "input" && b === "system" && !leaked.length, detail: `RT ${a}, LT LT ${b}, reachedSteam ${leaked}` };
 });
 
-await scenario("Words: Learned (n) / Blocked (n), 8 rows a page, RT / LT page and wrap, RB still leaves the tab", async () => {
+await scenario("Words: Learned (n) / Blocked (n), 12 rows a page, RT / LT page and wrap, RB still leaves the tab", async () => {
   const words = [];
-  for (let i = 0; i < 20; i++)
+  for (let i = 0; i < 30; i++)
     words.push([`menuword${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`, 1 + (i % 3)]);
   await learn(words);
   await openPanel();
@@ -388,9 +406,9 @@ await scenario("Words: Learned (n) / Blocked (n), 8 rows a page, RT / LT page an
   await press(RB);
   const out = await panel();
   const ok =
-    /^Learned \(2\d\)$/.test(i0.seg[0]) &&
+    /^Learned \(3\d\)$/.test(i0.seg[0]) &&
     i0.seg[1] === "Blocked (0)" &&
-    i0.rows === 8 &&
+    i0.rows === 12 &&
     i0.pageNo === "Page 1 / 3" &&
     i1.pageNo === "Page 2 / 3" &&
     i1.first !== i0.first &&
@@ -470,7 +488,7 @@ await scenario("Words: Blocked list unblocks with A and undo blocks again; an em
   return { ok, detail: JSON.stringify({ seg, un, re }) };
 });
 
-await scenario("one focus ring; up / down wrap through the tab and the rows; the body scrolls just enough", async () => {
+await scenario("one focus ring; up / down wrap through the tab, the left column and the right column; nothing scrolls", async () => {
   await openPanel();
   const first = await panel();
   const path = [];
@@ -489,10 +507,11 @@ await scenario("one focus ring; up / down wrap through the tab and the rows; the
   const ok =
     first.focus === "OSKSet_c_mode" &&
     first.scroll === 0 &&
-    path.at(-2) === "OSKSet_t_learn" &&
+    path.join() ===
+      "OSKSet_t_swipe,OSKSet_t_suggestions,OSKSet_t_autocorrect,OSKSet_t_learn,OSKSet_t_autoSpace,OSKSet_t_removeAutoSpace,OSKSet_tab_typing" &&
     wrapped.focus === "OSKSet_tab_typing" &&
-    last.focus === "OSKSet_t_learn" &&
-    last.scroll > 0 &&
+    last.focus === "OSKSet_t_removeAutoSpace" &&
+    last.scroll === 0 &&
     last.visible &&
     hidden === 0 &&
     [...rings].join() === "1";
@@ -529,13 +548,18 @@ await scenario("a held stick repeats at about 8 per second after 350 ms; Steam's
   };
 });
 
-await scenario("A and left / right switch a toggle; X, Y and Backspace do nothing in the panel", async () => {
+await scenario("A switches a toggle; left / right go to the row beside it in the other column; X, Y and Backspace do nothing", async () => {
   await openPanel();
   await focusTo("OSKSet_t_swipe");
   const s0 = (await settings()).swipe;
   await press(A);
   const s1 = (await settings()).swipe;
   await press(RIGHT);
+  const right = (await panel()).focus;
+  await press(RIGHT);
+  const edge = (await panel()).focus;
+  await press(LEFT);
+  const left = (await panel()).focus;
   const s2 = (await settings()).swipe;
   await page.evaluate(() => (window.__keyLog.length = 0));
   const before = await panel();
@@ -548,9 +572,20 @@ await scenario("A and left / right switch a toggle; X, Y and Backspace do nothin
   const typed = await page.evaluate(() => window.__keyLog.filter(([, k]) => k === "text").length);
   const leaked = await reached();
   const same = JSON.stringify(await settings()) === sBefore;
+  await setSetting("swipe", s0);
   return {
-    ok: s1 === !s0 && s2 === s0 && same && after.focus === before.focus && after.open && typed === 0 && !leaked.length,
-    detail: `swipe ${s0}->${s1}->${s2} same ${same} focus ${before.focus}->${after.focus} typed ${typed} reachedSteam ${leaked}`,
+    ok:
+      s1 === !s0 &&
+      s2 === s1 &&
+      right === "OSKSet_t_learn" &&
+      edge === right &&
+      left === "OSKSet_t_swipe" &&
+      same &&
+      after.focus === before.focus &&
+      after.open &&
+      typed === 0 &&
+      !leaked.length,
+    detail: `swipe ${s0}->${s1}->${s2} right ${right} edge ${edge} left ${left} same ${same} focus ${before.focus}->${after.focus} typed ${typed} reachedSteam ${leaked}`,
   };
 });
 

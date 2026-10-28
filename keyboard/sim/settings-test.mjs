@@ -24,7 +24,7 @@ async function boot(userWords) {
 await page.evaluate(() => window.localStorage.clear());
 results.push(`inject: ${await boot(null)}`);
 
-const { kbEval, center, vgp, padAt, padIdle } = pageHelpers(() => page);
+const { kbEval, center, vgp, padAt, padIdle, setSetting } = pageHelpers(() => page);
 
 async function padTap(side, key, holdMs = 20) {
   const c = await center(key);
@@ -497,7 +497,7 @@ await scenario("learned words list pages through every learned word", async () =
   const p2 = await count();
   const pageNo = await page.evaluate(() => document.querySelector(".osk-set-pageno")?.textContent);
   const pages = Number(String(pageNo).match(/\/\s*(\d+)/)?.[1] ?? 0);
-  const lastPage = pages >= 6;
+  const lastPage = pages >= 4;
   await padTap("L", "OSKSet_prev");
   const back = await count();
   await page.evaluate(() => {
@@ -505,7 +505,7 @@ await scenario("learned words list pages through every learned word", async () =
       window.__oskEngine.forget("zq" + String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26)));
   });
   return {
-    ok: p1.length === 8 && p1[0] === "zqbn×40" && p2.length === 8 && p2[0] !== p1[0] && lastPage && back[0] === p1[0],
+    ok: p1.length === 12 && p1[0] === "zqbn×40" && p2.length === 12 && p2[0] !== p1[0] && lastPage && back[0] === p1[0],
     detail: `page1 ${p1.slice(0, 3)} page2 ${p2.slice(0, 3)} n ${p1.length}/${p2.length} ${pageNo}`,
   };
 });
@@ -755,6 +755,155 @@ await scenario("Swipe threshold chooser: Normal by default, Large and Small appl
     detail: `default ${first} large ${a.deadzone} refused ${refused} kept ${kept} label ${label} small ${b.deadzone} normal ${c.deadzone}`,
   };
 });
+
+const ANALOG = { L: 19, R: 21 };
+async function padWake() {
+  await kbEval((kb) => {
+    for (const id of [19, 21]) kb.m_trackpadInput.m_AnalogCallbacks.Dispatch(id, 0, 0.1, 0.1);
+  });
+  await sleep(80);
+}
+// Raw pad samples through Steam's analog callback (so the panel's wrapper and hit test run), aimed at a screen point by
+// inverting the pad's linear mapping from two corner samples.
+const padTo = (side, x, y) =>
+  kbEval(
+    (kb, id, side, x, y) => {
+      const D = kb.m_trackpadInput.m_AnalogCallbacks;
+      const pad = side === "L" ? kb.m_leftTrackpad : kb.m_rightTrackpad;
+      const at = (u, v) => {
+        D.Dispatch(id, 0, u, v);
+        D.Dispatch(id, 0, u, v);
+        return [pad.x, pad.y];
+      };
+      const [x0, y0] = at(-1, -1);
+      const [x1, y1] = at(1, 1);
+      at(-1 + (2 * (x - x0)) / (x1 - x0), -1 + (2 * (y - y0)) / (y1 - y0));
+      return pad.lastElement?.getAttribute("data-key") ?? null;
+    },
+    ANALOG[side],
+    side,
+    x,
+    y,
+  );
+const padOn = async (side, key, fx = 0.5, fy = 0.5) => {
+  const r = await page.evaluate((key) => document.querySelector(`[data-key="${key}"]`)?.getBoundingClientRect().toJSON(), key);
+  return padTo(side, r.left + r.width * fx, r.top + r.height * fy);
+};
+const padOff = () =>
+  kbEval((kb) => {
+    for (const id of [19, 21]) kb.m_trackpadInput.m_AnalogCallbacks.Dispatch(id, 0, 0, 0);
+  });
+
+await scenario("pads reach every control on every tab, with the keyboard full and short, and nothing outside the panel", async () => {
+  const out = [];
+  for (const short of [false, true]) {
+    await page.evaluate((s) => window.__oskTrackpadFix.setSetting("suggestions", !s), short);
+    await settle(page);
+    await openPanel();
+    for (const t of ["typing", "input", "look", "words", "system"]) {
+      await page.evaluate((t) => document.querySelector(`[data-key="OSKSet_tab_${t}"]`).click(), t);
+      await sleep(60);
+      await padWake();
+      const r = await kbEval((kb) => {
+        const seen = new Set();
+        for (const [side, id] of [
+          ["L", 19],
+          ["R", 21],
+        ])
+          for (let ux = -1; ux <= 1.001; ux += 0.02)
+            for (let uy = -1; uy <= 1.001; uy += 0.02) {
+              kb.m_trackpadInput.m_AnalogCallbacks.Dispatch(id, 0, ux, uy);
+              kb.m_trackpadInput.m_AnalogCallbacks.Dispatch(id, 0, ux, uy);
+              const k = (side === "L" ? kb.m_leftTrackpad : kb.m_rightTrackpad).lastElement?.getAttribute("data-key");
+              if (k) seen.add(k);
+            }
+        const want = [...document.querySelectorAll(".osk-set-page.on [data-key], .osk-set-tabs [data-key]")]
+          .filter((e) => e.getClientRects().length)
+          .map((e) => e.getAttribute("data-key"));
+        const page = document.querySelector(".osk-set-page.on");
+        return {
+          miss: want.filter((k) => !seen.has(k)),
+          outside: [...seen].filter((k) => !k.startsWith("OSKSet_")),
+          fits: page.scrollHeight <= page.clientHeight,
+          n: want.length,
+        };
+      });
+      await padOff();
+      out.push({ t: (short ? "short " : "") + t, ...r });
+    }
+    await closePanel();
+  }
+  await page.evaluate(() => window.__oskTrackpadFix.setSetting("suggestions", true));
+  await settle(page);
+  const bad = out.filter((r) => r.miss.length || r.outside.length || !r.fits || !r.n);
+  return { ok: out.length === 10 && !bad.length, detail: JSON.stringify(bad.length ? bad : out.map((r) => `${r.t}:${r.n}`)) };
+});
+
+await scenario("a pad on a segment rings it and shows that choice's description in its row until the pad leaves", async () => {
+  const mode0 = (await settings()).mode;
+  await openPanel();
+  await padWake();
+  const desc = () => page.evaluate(() => document.querySelector('[data-key="OSKSet_c_mode"] .osk-set-desc').textContent);
+  const before = await desc();
+  const hit = await padOn("L", "OSKSet_v_mode_0");
+  const ring = await page.evaluate(() => document.querySelector('[data-key="OSKSet_v_mode_0"]').classList.contains("osk-set-hover"));
+  const peek = await desc();
+  const blue = await page.evaluate(() => document.querySelector('[data-key="OSKSet_c_mode"] .osk-set-desc').classList.contains("peek"));
+  await padOn("L", "OSKSet_t_swipe");
+  const after = await desc();
+  const mode = (await settings()).mode;
+  await padOff();
+  await closePanel();
+  return {
+    ok: hit === "OSKSet_v_mode_0" && ring && blue && !!before && peek === "Standard: Steam's layout" && after === before && mode === mode0,
+    detail: JSON.stringify({ hit, ring, before, peek, blue, after, mode }),
+  };
+});
+
+await scenario(
+  "a pad click on a slider's track sets the value and drags it until release; a click on its label drags from the value",
+  async () => {
+    await setSetting("keyAlpha", 100);
+    await openPanel();
+    await section("s_keyAlpha");
+    await padWake();
+    const val = () => sliderVal("keyAlpha");
+    const track = await page.evaluate(() =>
+      document.querySelector('[data-key="OSKSet_s_keyAlpha"] .osk-set-track').getBoundingClientRect().toJSON(),
+    );
+    const ty = track.top + track.height / 2;
+    const tx = (f) => track.left + track.width * f;
+    await padTo("R", tx(0.2), ty);
+    await vgp("vgp_onbuttondown", BTN.R);
+    const down = await val();
+    const steps = [];
+    for (const f of [0.35, 0.5, 0.7]) {
+      await padTo("R", tx(f), ty);
+      steps.push(await val());
+    }
+    await vgp("vgp_onbuttonup", BTN.R);
+    await padTo("R", tx(0.1), ty);
+    const released = await val();
+    const label = await page.evaluate(() =>
+      document.querySelector('[data-key="OSKSet_s_keyAlpha"] .osk-set-label').getBoundingClientRect().toJSON(),
+    );
+    const ly = label.top + label.height / 2;
+    await padTo("R", label.left + 4, ly);
+    await vgp("vgp_onbuttondown", BTN.R);
+    const grabbed = await val();
+    await padTo("R", label.left + 4 + track.width * 0.25, ly);
+    const moved = await val();
+    await vgp("vgp_onbuttonup", BTN.R);
+    await padOff();
+    const focus = await focused();
+    await setSetting("keyAlpha", 100);
+    await closePanel();
+    return {
+      ok: down === 20 && steps.join() === "35,50,70" && released === 70 && grabbed === 70 && moved === 95 && focus === "OSKSet_s_keyAlpha",
+      detail: JSON.stringify({ down, steps, released, grabbed, moved, focus }),
+    };
+  },
+);
 
 let saved = null;
 await scenario(

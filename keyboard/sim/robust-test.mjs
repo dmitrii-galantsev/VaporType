@@ -111,7 +111,7 @@ function helpers(page) {
 async function mainBlock() {
   const { page, errors, status } = await fresh();
   const h = helpers(page);
-  check(/^v30 layouts=\d+ keyboard=patched/.test(status) || /^v30 layouts=\d+ keyboard=waiting/.test(status), "patch loads", status);
+  check(/^v31 layouts=\d+ keyboard=patched/.test(status) || /^v31 layouts=\d+ keyboard=waiting/.test(status), "patch loads", status);
 
   await h.F(() => {
     const eng = window.__oskEngine;
@@ -187,7 +187,7 @@ async function mainBlock() {
   const tapRec = recs.find((r) => r.type === "word" && r.kind === "tap" && r.committed === "pool");
   const swipeRec = recs.find((r) => r.kind === "swipe");
   check(
-    env?.versions?.keyboard === 30 &&
+    env?.versions?.keyboard === 31 &&
       env.versions.engine > 0 &&
       env.versions.installed === "2026-10-23" &&
       env.settings?.mode &&
@@ -270,9 +270,9 @@ async function mainBlock() {
       .map((k) => !!document.querySelector(`[data-key="OSKSet_t_${k}"]`))
       .concat(!!document.querySelector('[data-key="OSKSet_clear_log"]')),
   );
-  if (shots) await page.screenshot({ path: path.join(shots, "panel-v30.png") });
+  if (shots) await page.screenshot({ path: path.join(shots, "panel-v31.png") });
   check(
-    /^VaporType v30 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(vline ?? "") &&
+    /^VaporType v31 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(vline ?? "") &&
       toggles.every(Boolean),
     "settings panel: version line, private mode and typing log switches, clear log button",
     { vline, toggles },

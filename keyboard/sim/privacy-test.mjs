@@ -346,12 +346,11 @@ async function naming() {
   await h.tap("OSKSet_tab_system");
   const v = await h.F(() => ({
     line: document.querySelector(".osk-set-version")?.textContent,
-    title: document.querySelector(".osk-set-title")?.textContent,
+    title: document.querySelector(".osk-set-title")?.textContent ?? null,
   }));
   check(
-    /^VaporType v30 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(v.line ?? "") &&
-      v.title === "VaporType",
-    "the panel says VaporType: title and version line",
+    /^VaporType v31 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(v.line ?? "") && v.title === null,
+    "the panel says VaporType in the version line and has no wordmark",
     v,
   );
   await page.close();

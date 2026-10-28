@@ -201,7 +201,7 @@ check(
     !tip2.emoji &&
     !tipUnderPanel &&
     !panelInfo.foot &&
-    /^VaporType v30/.test(panelInfo.data) &&
+    /^VaporType v31/.test(panelInfo.data) &&
     /osk-set-disabled/.test(panelInfo.clear),
   "the tip uses the gear icon and closes when the panel opens; the version line sits in System, not the footer; Clear typing log is greyed out with the log off and empty",
   { tip2, tipUnderPanel, panelInfo },
@@ -332,18 +332,18 @@ check(
     panel.first === "OSKSet_c_mode" &&
     panel.tabStyle[1] === "rgb(74, 168, 255)" &&
     panel.edges.length === 0 &&
-    panel.fonts.label >= 16 &&
-    panel.fonts.desc >= 13 &&
-    panel.fonts.seg >= 15 &&
-    panel.fonts.tab >= 16 &&
-    panel.footFont >= 12 &&
+    panel.fonts.label >= 12 &&
+    panel.fonts.desc >= 10.5 &&
+    panel.fonts.seg >= 11 &&
+    panel.fonts.tab >= 12 &&
+    panel.footFont >= 10 &&
     ratio(rgb(panel.pill[0]), rgb(panel.pill[1])) >= 3 &&
-    focus?.[0] === "OSKSet_t_autocorrect" &&
+    focus?.[0] === "OSKSet_t_suggestions" &&
     focus[1] !== focus[2] &&
     focus[3] === "solid" &&
     focus[4] === "rgb(74, 168, 255)" &&
     danger,
-  "panel: five tabs with Typing mode first, the active tab has a blue underline, one blue focus ring and no other outline or edge, labels ≥ 16 px and descriptions ≥ 13 px, switch knob ≥ 3:1 on its track, Forget everything is a red danger row",
+  "panel: five tabs with Typing mode first, the active tab has a blue underline, one blue focus ring and no other outline or edge, labels ≥ 12 px, descriptions ≥ 10.5 px and footer keys ≥ 10 px, switch knob ≥ 3:1 on its track, Forget everything is a red danger row",
   { panel, focus, danger, pillRatio: ratio(rgb(panel.pill[0]), rgb(panel.pill[1])).toFixed(2) },
 );
 

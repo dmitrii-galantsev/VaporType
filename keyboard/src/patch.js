@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 30;
+  const VERSION = 31;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -152,7 +152,7 @@
       ],
     ],
     theme: [
-      "Look",
+      "Theme",
       [
         ["modern", "Modern", "Rounded keys with gaps"],
         ["steam", "Steam", "Steam's original keyboard"],
@@ -199,26 +199,20 @@
   ];
   const PANEL_ROWS = {
     typing: [
-      ["Layout", ["c_mode", "t_swipe"]],
-      ["Spelling", ["t_autocorrect", "t_suggestions", "t_autoSpace", "t_removeAutoSpace", "t_learn"]],
+      [["Keys", ["c_mode", "t_swipe", "t_suggestions"]]],
+      [["Spelling", ["t_autocorrect", "t_learn", "t_autoSpace", "t_removeAutoSpace"]]],
     ],
-    input: [
-      ["Pads", ["c_reach", "c_oneAspect", "c_deadzone"]],
-      ["Buttons", ["t_slideCursor", "t_bumpers", "t_enterCloses"]],
-    ],
+    input: [[["Pads", ["c_reach", "c_oneAspect", "c_deadzone"]]], [["Buttons", ["t_slideCursor", "t_bumpers", "t_enterCloses"]]]],
     look: [
-      ["", ["c_theme", ["s_boardAlpha", "s_keyAlpha", "s_spaceAlpha", "s_stripAlpha"], "c_blur"]],
-      ["Feedback", ["t_trail", "t_echo"]],
-      ["", ["reset_look"]],
+      [["Style", ["c_theme", "c_blur", "t_trail", "t_echo", "reset_look"]]],
+      [["Opacity", ["preview", "s_boardAlpha", "s_keyAlpha", "s_spaceAlpha", "s_stripAlpha"]]],
     ],
-    words: [["", ["c_list", "words"]]],
-    system: [
-      ["Privacy", ["t_privateMode", "t_typingLog", "clear_log"]],
-      ["About", ["version"]],
-      ["Controls", ["help"]],
-      ["", ["forget_all"]],
-    ],
+    words: [[["", ["c_list", "words"]]]],
+    system: [[["Privacy", ["t_privateMode", "t_typingLog", "clear_log", "forget_all"]]], [["Controls", ["help", "version"]]]],
   };
+  const PANEL_MIN_H = 252;
+  const PANEL_NARROW = 600;
+  const PANEL_TINY = 420;
   const BLUE = "#0a74d6";
   const gearUrl = (fill) =>
     `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="${fill}" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L14.9 3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.4 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM12.9 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>`)}")`;
@@ -232,7 +226,7 @@
     gear: "M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L14.9 3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.4 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM12.9 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z",
   };
   const LOOK = new Set(["theme", "reach", "bumpers"]);
-  const LIST_PAGE = 8;
+  const LIST_PAGE = 12;
   const LEARNED_MAX = 1000;
 
   const K_LALT = 100;
@@ -2917,6 +2911,10 @@
     P.list = "learned";
     P.words = null;
     P.touch = null;
+    P.drag = null;
+    P.mouseDrag = null;
+    setHover(null);
+    for (const e of P.el.querySelectorAll(".osk-set-hover")) e.classList.remove("osk-set-hover");
     disarm();
     clearUndo();
     setFocus(null);
@@ -2928,7 +2926,7 @@
       paintFoot();
     } else {
       showTab(PANEL_ROWS[tab] ? tab : "typing");
-      paintChips();
+      paintCount();
     }
     if (!P.el.isConnected) doc.body.appendChild(P.el);
     placePanel();
@@ -2951,7 +2949,7 @@
       for (const pg of Object.values(P.pages)) pg.el.classList.remove("pre");
       if (!P.words) {
         wordLists();
-        paintChips();
+        paintCount();
         if (P.tab === "words") paintWords();
       } else {
         const next = PANEL_TABS.find(([id]) => !P.pages[id]);
@@ -2982,8 +2980,11 @@
     if (P.open && P.tab === "consent" && !settings.consent) state.consentLater = true;
     P.open = false;
     setFocus(null);
+    setHover(null);
     P.el?.remove();
     P.touch = null;
+    P.drag = null;
+    P.mouseDrag = null;
     if (P.lookDue) {
       P.lookDue = false;
       for (const doc of documents()) applyLook(doc);
@@ -3005,10 +3006,45 @@
     const k = f / z;
     const zoom = z === 1 ? "" : String(z);
     if (P.el.style.zoom !== zoom) P.el.style.zoom = zoom;
-    const box = [`${r.left * k}px`, `${r.top * k}px`, `${r.width * k}px`, `${r.height * k}px`];
+    const h = Math.max(r.height * k, PANEL_MIN_H);
+    const top = Math.max(0, r.bottom * k - h);
+    const box = [`${r.left * k}px`, `${top}px`, `${r.width * k}px`, `${r.bottom * k - top}px`];
     if (P.box === box.join()) return;
     P.box = box.join();
     Object.assign(P.el.style, { left: box[0], top: box[1], width: box[2], height: box[3] });
+    const w = r.width * k;
+    if (P.el.classList.contains("narrow") !== w < PANEL_NARROW) P.el.classList.toggle("narrow", w < PANEL_NARROW);
+    if (P.el.classList.contains("tiny") !== w < PANEL_TINY) P.el.classList.toggle("tiny", w < PANEL_TINY);
+  }
+
+  function panelPadY(kb, y) {
+    if (!P.el?.isConnected || P.kb !== kb) return y;
+    const p = P.el.getBoundingClientRect();
+    const r = kb.m_keyboardDiv?.getBoundingClientRect();
+    if (!r?.height || p.height - r.height < 1) return y;
+    return p.top + ((y - r.top) * p.height) / r.height;
+  }
+
+  function panelPadNested(kb, pad, side, x, y) {
+    const last = pad.lastElement;
+    if (!last?.querySelector?.("[data-key]") || !P.el?.contains(last)) return;
+    const r = last.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+    if (kb.getElementFromPointWorkaround(x, y, side === "L" ? LPAD : RPAD) === last) return;
+    kb.OnTrackpadHover(last, undefined);
+    pad.lastElement = undefined;
+  }
+
+  function panelPadScroll(side, x, y) {
+    const pg = P.shown?.el;
+    const now = performance.now();
+    const last = P.edge?.[side] ?? now;
+    (P.edge ??= {})[side] = now;
+    if (!pg || pg.scrollHeight - pg.clientHeight < 2) return;
+    const r = pg.getBoundingClientRect();
+    if (x < r.left || x > r.right) return;
+    const d = y > r.bottom - 20 ? 1 : y < r.top + 14 ? -1 : 0;
+    if (d) pg.scrollTop += d * Math.min(now - last, 50) * 0.3;
   }
 
   function versionLine() {
@@ -3045,7 +3081,7 @@
     if (pg) {
       pg.all.push(r);
       if (r.key && r.focus !== false) pg.rows.push(r);
-      (pg.into ?? pg.el).appendChild(r.el);
+      pg.col.appendChild(r.el);
     }
     return r;
   }
@@ -3066,12 +3102,22 @@
     P.el.addEventListener("click", (e) => {
       const k = e.target?.closest?.("[data-key]")?.getAttribute("data-key");
       e.stopPropagation();
-      if (k) pointerActivate(k, e.isTrusted ? e.clientX : undefined);
+      if (k) pointerActivate(k, e.isTrusted ? e.clientX : undefined, e.clientY);
     });
-    const head = el("osk-set-head");
-    P.chips = el("osk-set-chips");
-    head.append(el("osk-set-title", "VaporType"), P.chips);
-    head.appendChild(addRow({ key: SET + "close", el: keyEl("close", "osk-set-close", "✕"), type: "close", act: () => closePanel() }).el);
+    P.el.addEventListener("mouseover", (e) => {
+      if (P.open) setHover(e.target?.closest?.(".osk-set-btn")?.getAttribute("data-key") ?? null);
+    });
+    P.el.addEventListener("mouseleave", () => P.open && setHover(null));
+    P.el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      const k = e.target?.closest?.("[data-key]")?.getAttribute("data-key");
+      P.mouseDrag = grabSlider(k, e.clientX, e.clientY);
+      if (P.mouseDrag) e.target.setPointerCapture?.(e.pointerId);
+    });
+    P.el.addEventListener("pointermove", (e) => {
+      if (P.open && P.mouseDrag && e.buttons & 1) dragSlider(P.mouseDrag, e.clientX);
+    });
+    for (const t of ["pointerup", "pointercancel"]) P.el.addEventListener(t, () => (P.mouseDrag = null));
     const tabs = el("osk-set-tabs");
     P.tabEls = {};
     for (const [id, label, icon] of PANEL_TABS) {
@@ -3093,7 +3139,7 @@
       tabs.appendChild(b);
       addRow({ key: SET + `tab_${id}`, el: b, type: "tab", act: () => showTab(id) });
     }
-    tabs.appendChild(el("osk-set-navhint", "LB ◂ ▸ RB"));
+    tabs.appendChild(addRow({ key: SET + "close", el: keyEl("close", "osk-set-close", "✕"), type: "close", act: () => closePanel() }).el);
     P.body = el("osk-set-body");
     const foot = el("osk-set-foot");
     P.hint = el("osk-set-hint");
@@ -3110,7 +3156,7 @@
       addRow({ key: SET + id, el: keyEl(id, "osk-set-page-btn", text), type: "pager", act: () => stepPage(d) });
     P.pager.append(P.rows.get(SET + "prev").el, P.pageNo, P.rows.get(SET + "next").el);
     foot.append(P.hint, P.undoEl, P.pager);
-    P.el.append(head, tabs, P.body, foot);
+    P.el.append(tabs, P.body, foot);
   }
 
   function buildConsent() {
@@ -3142,17 +3188,12 @@
   function buildPage(id) {
     if (P.pages[id]) return P.pages[id];
     const pg = { id, el: el("osk-set-page pre"), rows: [], all: [] };
-    for (const [title, ids] of PANEL_ROWS[id]) {
-      if (title) pg.el.appendChild(el("osk-set-sec", title));
-      for (const rid of ids) {
-        if (!Array.isArray(rid)) {
-          buildRow(rid, pg);
-          continue;
-        }
-        pg.into = el("osk-set-grid2");
-        pg.el.appendChild(pg.into);
-        for (const sub of rid) buildRow(sub, pg);
-        pg.into = null;
+    for (const sections of PANEL_ROWS[id]) {
+      pg.col = el("osk-set-col");
+      pg.el.appendChild(pg.col);
+      for (const [title, ids] of sections) {
+        if (title) pg.col.appendChild(el("osk-set-sec", title));
+        for (const rid of ids) buildRow(rid, pg);
       }
     }
     P.pages[id] = pg;
@@ -3197,27 +3238,10 @@
         },
       );
       P.listRow = r;
+      r.el.classList.add("osk-set-inline");
       return addRow(r, pg);
     }
-    if (id === "c_theme") {
-      const [label, values] = CHOICES[k];
-      const r = addRow(
-        segRow(
-          id,
-          label,
-          values,
-          () => settings[k],
-          (v) => setSetting(k, v),
-          [k],
-        ),
-        pg,
-      );
-      const pv = addRow(previewRow());
-      r.el.classList.add("osk-set-lookrow");
-      r.el.insertBefore(pv.el, r.el.querySelector(".osk-set-seg"));
-      pg.all.push(pv);
-      return r;
-    }
+    if (id === "preview") return addRow(previewRow(), pg);
     if (id.startsWith("c_")) {
       const [label, values] = CHOICES[k];
       const r = segRow(
@@ -3244,9 +3268,12 @@
       );
     if (id === "clear_log") return addRow(clearLogRow(), pg);
     if (id === "forget_all") return addRow(forgetRow(), pg);
-    if (id === "version") return addRow({ el: el("osk-set-info osk-set-version", versionLine()), focus: false }, pg);
+    if (id === "version") return addRow({ el: el("osk-set-version", versionLine()), focus: false }, pg);
     if (id === "help") return addRow({ el: helpCard(), focus: false }, pg);
     if (id === "words") {
+      const col = pg.col;
+      pg.col = el("osk-set-words");
+      col.appendChild(pg.col);
       pg.items = [];
       for (let i = 0; i < LIST_PAGE; i++) {
         const b = keyEl(`w_${i}`, "osk-set-row osk-set-item");
@@ -3256,47 +3283,58 @@
         b.hidden = true;
         pg.items.push(addRow(r, pg));
       }
+      pg.col = col;
       P.empty = el("osk-set-empty");
       P.empty.hidden = true;
-      pg.el.appendChild(P.empty);
+      col.appendChild(P.empty);
     }
   }
 
-  function textBlock(b, label, desc) {
-    const t = el("osk-set-text");
+  function labelEl(b, label, r) {
     const l = el("osk-set-label", label);
-    const d = el("osk-set-desc", desc);
-    t.append(l, d);
-    b.appendChild(t);
-    return [l, d];
+    r.d = el("osk-set-desc", r.info ?? "");
+    b.append(l, r.d);
+    return l;
+  }
+
+  function setInfo(r, text) {
+    if (r.info === text) return;
+    r.info = text;
+    paintDesc(r);
+  }
+
+  function paintDesc(r) {
+    if (!r?.d) return;
+    setText(r.d, r.peek ?? r.info ?? "");
+    const peek = !!r.peek;
+    if (r.pk !== peek) r.d.classList.toggle("peek", (r.pk = peek));
   }
 
   function toggleRow(k) {
     const [, label, desc] = TOGGLE_LABELS.find(([x]) => x === k);
     const b = keyEl(`t_${k}`, "osk-set-row osk-set-toggle");
     b.setAttribute("role", "switch");
-    const [, d] = textBlock(b, label, desc);
-    b.appendChild(el("osk-set-switch"));
-    const flip = () => setSetting(k, !settings[k]);
     const r = {
       key: SET + `t_${k}`,
       el: b,
       type: "toggle",
+      info: desc,
       bind: [...new Set([k, "privateMode", "consent"])],
       paint() {
         const on = !!settings[k];
-        const paused =
-          on && !eff(k) ? (settings.privateMode ? "Paused while private mode is on" : "Paused until first use is answered") : desc;
+        const paused = on && !eff(k);
         if (r.v !== on) {
           r.v = on;
           b.classList.toggle("on", on);
           b.setAttribute("aria-checked", String(on));
         }
-        if (r.d !== paused) setText(d, (r.d = paused));
+        if (r.p !== paused) b.classList.toggle("paused", (r.p = paused));
+        setInfo(r, paused ? (settings.privateMode ? "Paused while private mode is on" : "Paused until first use is answered") : desc);
       },
-      act: flip,
-      step: flip,
+      act: () => setSetting(k, !settings[k]),
     };
+    labelEl(b, label, r);
+    b.appendChild(el("osk-set-switch"));
     return r;
   }
 
@@ -3307,19 +3345,16 @@
     b.setAttribute("aria-label", sl.label);
     b.setAttribute("aria-valuemin", String(sl.min));
     b.setAttribute("aria-valuemax", String(sl.max));
-    textBlock(b, sl.label, sl.desc);
-    const ctl = el("osk-set-ctl");
     const val = el("osk-set-val");
     const track = el("osk-set-track");
     const fill = el("osk-set-fill");
     const knob = el("osk-set-knob");
     track.append(fill, knob);
-    ctl.append(val, track);
-    b.appendChild(ctl);
     const r = {
       key: SET + `s_${k}`,
       el: b,
       type: "slider",
+      info: sl.desc,
       track,
       bind: [k],
       paint() {
@@ -3333,21 +3368,21 @@
         b.setAttribute("aria-valuenow", String(v));
         b.setAttribute("aria-valuetext", sl.text(v));
       },
-      act: (x, drag) => pickSlider(k, x, track, drag),
+      act: (x, drag, y) => pickSlider(k, x, track, drag, y),
       step: (dir, button) => holdSlider(k, dir, button),
     };
+    labelEl(b, sl.label, r);
+    b.append(val, track);
     return r;
   }
 
   function segRow(id, label, values, get, set, bind) {
     const b = keyEl(id, "osk-set-row osk-set-segrow");
-    const [, d] = textBlock(b, label, "");
     const group = el("osk-set-seg");
-    b.appendChild(group);
-    const btns = values.map(([v, name, , short], i) => {
+    const btns = values.map(([v, name, desc, short], i) => {
       const s = keyEl(`v_${id.slice(2)}_${i}`, "osk-set-segbtn", short ?? name);
       group.appendChild(s);
-      addRow({ key: s.getAttribute("data-key"), el: s, owner: SET + id, act: () => set(v) });
+      addRow({ key: s.getAttribute("data-key"), el: s, owner: SET + id, info: `${name}: ${desc}`, act: () => set(v) });
       return s;
     });
     const at = () => values.findIndex(([v]) => v === get());
@@ -3357,13 +3392,14 @@
       type: "seg",
       btns,
       bind,
+      info: "",
       paint() {
         const i = at();
         if (r.v === i) return;
         if (r.v >= 0) btns[r.v]?.classList.remove("on");
         if (i >= 0) btns[i].classList.add("on");
         r.v = i;
-        setText(d, values[i]?.[2] ?? "");
+        setInfo(r, values[i]?.[2] ?? "");
       },
       act: () => set(values[(at() + 1) % values.length][0]),
       step(dir) {
@@ -3372,14 +3408,17 @@
         if (j !== i) set(values[j][0]);
       },
     };
+    labelEl(b, label, r);
+    b.appendChild(group);
     return r;
   }
 
   function actionRow(id, label, desc, fn) {
     const b = keyEl(id, "osk-set-row osk-set-action");
-    const [l, d] = textBlock(b, label, desc);
+    const r = { key: SET + id, el: b, type: "action", info: desc, act: fn };
+    r.l = labelEl(b, label, r);
     b.appendChild(el("osk-set-chev", "›"));
-    return { key: SET + id, el: b, type: "action", l, d, act: fn };
+    return r;
   }
 
   const logEmpty = () => !settings.typingLog && !settings.logFile && !LOG.out.length;
@@ -3396,12 +3435,13 @@
     r.bind = ["typingLog", "logFile", "privateMode"];
     r.paint = () => {
       const empty = logEmpty();
-      const text =
-        P.cleared && performance.now() - P.cleared < 5000 ? "Cleared" : empty ? "No log to clear" : "Deletes the log file on this Deck";
+      const done = P.cleared && performance.now() - P.cleared < 5000;
+      const text = done ? "Cleared" : empty ? "No log to clear" : "Deletes the log file on this Deck";
+      setText(r.l, done ? "Typing log cleared" : "Clear typing log");
       if (r.v === text + empty) return;
       r.v = text + empty;
       r.el.classList.toggle("osk-set-disabled", empty);
-      setText(r.d, text);
+      setInfo(r, text);
     };
     return r;
   }
@@ -3412,14 +3452,14 @@
         disarm();
         state.forgetAll();
         P.words = null;
-        paintChips();
-        setText(r.d, "Done: learned and blocked words and the log are gone");
+        paintCount();
+        setInfo(r, "Done: learned and blocked words and the log are gone");
         return;
       }
       P.confirm = performance.now();
       r.el.classList.add("armed");
-      setText(r.l, "Press again to forget everything");
-      setText(r.d, "B cancels · this cannot be undone");
+      setText(r.l, "Press again to forget");
+      setInfo(r, "B cancels · this cannot be undone");
       clearTimeout(P.armTimer);
       P.armTimer = setTimeout(disarm, UNDO_MS);
       paintFoot();
@@ -3438,7 +3478,7 @@
     if (r) {
       r.el.classList.remove("armed");
       setText(r.l, "Forget everything");
-      setText(r.d, "Learned and blocked words and the typing log");
+      setInfo(r, "Learned and blocked words and the typing log");
     }
     paintFoot();
     return true;
@@ -3447,14 +3487,14 @@
   function helpCard() {
     const card = el("osk-set-help");
     for (const [k, v] of [
-      ["LB RB", "Previous / next tab"],
-      ["LT RT", "Page Words, else tab"],
-      ["▴ ▾", "Move (hold to repeat)"],
-      ["◂ ▸", "Change the setting"],
+      ["Pads", "Point, click, drag a slider"],
       ["A", "Select"],
+      ["▴ ▾", "Move, hold to repeat"],
       ["B", "Back, then close"],
-      ["Hold emoji", "Open settings"],
-      ["Hold typed text", "Private mode"],
+      ["◂ ▸", "Change, or other column"],
+      ["LB RB", "Previous / next tab"],
+      ["Hold text", "Private mode"],
+      ["LT RT", "Page words, else tab"],
     ])
       card.append(el("osk-set-k", k), el("osk-set-help-text", v));
     return card;
@@ -3519,12 +3559,9 @@
     paintFoot();
   }
 
-  function paintChips() {
-    if (!P.chips) return;
-    const mode = CHOICES.mode[1].find(([v]) => v === settings.mode)?.[1];
+  function paintCount() {
+    if (!P.wordCount) return;
     const w = P.words;
-    const text = [mode, w && `${w.total} word${w.total === 1 ? "" : "s"}`, `v${VERSION}`].filter(Boolean).join(" · ");
-    setText(P.chips, text);
     const n = w ? String(w.total + w.blocked.length) : "";
     setText(P.wordCount, n);
     P.wordCount.hidden = !n || n === "0";
@@ -3558,7 +3595,7 @@
     P.pages.words.count = pages;
     const f = P.rows.get(P.focus);
     if (f?.type === "item" && f.el.hidden) setFocus(pg.items.filter((r) => !r.el.hidden).at(-1)?.key ?? P.listRow.key);
-    paintChips();
+    paintCount();
     paintFoot();
   }
 
@@ -3692,10 +3729,26 @@
     P.pager.hidden = !text;
   }
 
+  function setHover(k) {
+    if (P.hover === k) return;
+    const was = P.hover && P.rows?.get(P.hover)?.owner;
+    P.hover = k;
+    const own = k && P.rows?.get(k)?.owner;
+    if (was && was !== own) {
+      const r = P.rows.get(was);
+      r.peek = null;
+      paintDesc(r);
+    }
+    if (own) {
+      const r = P.rows.get(own);
+      r.peek = P.rows.get(k).info;
+      paintDesc(r);
+    }
+  }
+
   function paintSetting(name) {
     if (!P.bound) return;
     for (const r of P.bound.get(name) ?? []) r.paint();
-    if (name === "mode") paintChips();
   }
 
   function setFocus(k, scroll = true) {
@@ -3731,13 +3784,30 @@
     return v !== settings[k] && setSetting(k, v);
   }
 
-  function pickSlider(k, x, track, drag) {
+  function pickSlider(k, x, track, drag, y) {
     const sl = SLIDERS[k];
     if (typeof x !== "number") return setSlider(k, settings[k] >= sl.max ? sl.min : settings[k] + sl.step);
     const r = (track ?? sliderOf(k)?.track)?.getBoundingClientRect();
-    if (!r?.width || (!drag && (x < r.left - 16 || x > r.right + 16))) return false;
+    if (!r?.width || (!drag && (x < r.left - 16 || x > r.right + 16 || y < r.top - 8))) return false;
     const f = Math.min(1, Math.max(0, (x - r.left) / r.width));
     return setSlider(k, sl.min + Math.round((f * (sl.max - sl.min)) / sl.step) * sl.step);
+  }
+
+  function grabSlider(key, x, y) {
+    const r = P.rows.get(key);
+    if (r?.type !== "slider") return null;
+    const t = r.track.getBoundingClientRect();
+    return { key, from: y < t.top - 8 ? [x, settings[r.bind[0]]] : null };
+  }
+
+  function dragSlider(d, x) {
+    const r = P.rows.get(d.key);
+    if (!d.from) return r?.act(x, true);
+    const k = r.bind[0];
+    const sl = SLIDERS[k];
+    const w = r.track.getBoundingClientRect().width;
+    const v = d.from[1] + ((x - d.from[0]) / w) * (sl.max - sl.min);
+    if (w) setSlider(k, sl.min + Math.round((v - sl.min) / sl.step) * sl.step);
   }
 
   function holdSlider(k, dir, button) {
@@ -3775,23 +3845,23 @@
     for (const k of LOOK_RESET) setSetting(k, DEFAULTS[k]);
   }
 
-  function activate(key, x) {
+  function activate(key, x, y) {
     const r = P.rows?.get(key);
     if (!r?.act) return;
     try {
-      r.act(x);
+      r.act(x, false, y);
     } catch (e) {
       note(e);
     }
   }
 
-  function pointerActivate(key, x) {
+  function pointerActivate(key, x, y) {
     const r = P.rows?.get(key);
     if (!r) return;
     const owner = r.owner ?? key;
     const t = P.rows.get(owner)?.type;
     if (t && t !== "close" && t !== "undo" && t !== "pager" && P.focus !== owner) setFocus(owner, false);
-    activate(key, x);
+    activate(key, x, y);
   }
 
   function unblockWord(word) {
@@ -3825,10 +3895,27 @@
         stepTab(d);
         return startRepeat(button, () => stepTab(d));
       }
-      return r?.step?.(d, button);
+      return r?.step ? r.step(d, button) : sideStep(d);
     }
     moveFocus(dir);
     startRepeat(button, () => moveFocus(dir));
+  }
+
+  function sideStep(d) {
+    const cur = P.rows.get(P.focus)?.el;
+    if (!cur || !P.shown?.el.contains(cur)) return;
+    const a = cur.getBoundingClientRect();
+    const mid = (a.top + a.bottom) / 2;
+    let best = null;
+    let gap = Infinity;
+    for (const r of P.shown.rows) {
+      if (r.el.hidden || r.el === cur) continue;
+      const b = r.el.getBoundingClientRect();
+      if (d < 0 ? b.right > a.left : b.left < a.right) continue;
+      const dy = Math.abs((b.top + b.bottom) / 2 - mid);
+      if (dy < gap) [best, gap] = [r.key, dy];
+    }
+    if (best) setFocus(best);
   }
 
   function stepTab(step) {
@@ -3888,6 +3975,7 @@
       if (side && SW.emojiHold?.side === side) return;
       if (side && !down && P.padDown[side]) {
         P.padDown[side] = false;
+        if (P.drag?.side === side) P.drag = null;
         e.stopImmediatePropagation();
         e.preventDefault();
         if (P.open) setPadDown(kb, side, false);
@@ -3907,7 +3995,10 @@
         note(err);
       }
       const k = el?.getAttribute?.("data-key") ?? "";
-      if (k.startsWith(SET) && P.el?.contains(el)) pointerActivate(k, pad.x);
+      if (!k.startsWith(SET) || !P.el?.contains(el)) return;
+      const grab = grabSlider(k, pad.x, pad.y);
+      pointerActivate(k, pad.x, pad.y);
+      if (grab) P.drag = { side, ...grab };
       return;
     }
     if (button === OK_BTN && !down && P.aDown) {
@@ -3958,7 +4049,7 @@
       P.touch = null;
       if (!s?.key || s.drag || Math.abs((P.shown?.el.scrollTop ?? 0) - s.scroll) > 6) return true;
       const at = P.el.ownerDocument.elementFromPoint(t.clientX, t.clientY)?.closest?.("[data-key]");
-      if (at?.getAttribute("data-key") === s.key) pointerActivate(s.key, t.clientX);
+      if (at?.getAttribute("data-key") === s.key) pointerActivate(s.key, t.clientX, t.clientY);
     } else if (e.type === "touchcancel") P.touch = null;
     return true;
   }
@@ -4125,7 +4216,7 @@
 .osk-toast{position:fixed;z-index:2147482500;pointer-events:none;box-sizing:border-box;padding:10px 16px;border-radius:12px;background:rgba(18,22,29,.96);color:#eef2f7;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 8px 24px rgba(0,0,0,.45);font:15px/1.35 "Motiva Sans",Arial,Helvetica,sans-serif;transition:opacity 300ms ease-out}
 .osk-toast b{color:#9fd0ff;font-weight:600}
 .osk-toast[hidden]{display:none !important}
-.osk-set{position:fixed;z-index:2147482000;box-sizing:border-box;display:flex;flex-direction:column;background:#14171c;border-top:1px solid rgba(255,255,255,.08);color:#e9edf2;font-family:"Motiva Sans",Arial,Helvetica,sans-serif;font-size:15px;line-height:1.25;user-select:none;-webkit-user-select:none;touch-action:none;contain:strict;animation:osk-set-in 90ms ease-out}
+.osk-set{position:fixed;z-index:2147482000;box-sizing:border-box;display:flex;flex-direction:column;background:#12151a;border-top:1px solid rgba(255,255,255,.08);color:#e8ecf1;font-family:"Motiva Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:1.25;user-select:none;-webkit-user-select:none;touch-action:none;contain:strict;animation:osk-set-in 90ms ease-out}
 @keyframes osk-set-in{from{opacity:0;transform:scale(.985)}}
 @keyframes osk-set-arm{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @media (prefers-reduced-motion:reduce){.osk-set{animation:none}}
@@ -4134,97 +4225,103 @@
 .osk-set-btn{cursor:pointer}
 .osk-set-btn *{pointer-events:none}
 .osk-set-seg .osk-set-segbtn{pointer-events:auto}
-.osk-set-head{flex:none;height:36px;display:flex;align-items:center;gap:12px;padding:0 2px 0 14px}
-.osk-set-title{flex:none;font-size:17px;font-weight:600;letter-spacing:.01em;color:#9fd0ff;white-space:nowrap}
-.osk-set-chips{flex:1;min-width:0;font-size:13px;color:#8b93a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.osk-set-close{flex:none;width:40px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:999px;font-size:18px;color:#c3cad6}
-.osk-set-tabs{flex:none;height:40px;display:flex;align-items:center;gap:4px;padding:0 10px 2px;border-bottom:1px solid rgba(255,255,255,.06)}
-.osk-set-tab{position:relative;height:34px;display:flex;align-items:center;gap:7px;padding:0 14px;border-radius:999px;font-size:16px;color:#9aa3b2;white-space:nowrap}
-.osk-set-tab:not(.on).osk-set-hover,.osk-set-close.osk-set-hover,.osk-set-page-btn.osk-set-hover{background:#232933}
-@media (hover:hover){.osk-set-tab:not(.on):hover,.osk-set-close:hover,.osk-set-page-btn:hover{background:#232933}}
-.osk-set-tab.on{background:#16324d;color:#fff}
-.osk-set-tab.on::after{content:"";position:absolute;left:16px;right:16px;bottom:-5px;height:2px;border-radius:2px;background:#4aa8ff}
-.osk-set-tab-count{min-width:22px;padding:0 6px;border-radius:999px;background:rgba(255,255,255,.1);font-size:13px;text-align:center;color:#d5dbe4}
-.osk-set-ico{flex:none;width:18px;height:18px;fill:currentColor}
-.osk-set-navhint{margin-left:auto;font-size:13px;color:#8b93a1;white-space:nowrap}
+.osk-set .osk-set-focus{outline:2px solid #4aa8ff;outline-offset:-2px}
+.osk-set-tabs{flex:none;height:26px;display:flex;background:#0d1014;border-bottom:1px solid rgba(255,255,255,.07)}
+.osk-set-tab{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 6px;font-size:12px;font-weight:500;color:#8a93a1;white-space:nowrap}
+.osk-set-tab.on{background:#18212c;color:#fff}
+.osk-set-tab.on::after{content:"";position:absolute;left:22%;right:22%;bottom:0;height:2px;border-radius:2px 2px 0 0;background:#4aa8ff}
+.osk-set-tab-count{min-width:16px;padding:0 4px;border-radius:999px;background:rgba(255,255,255,.1);font-size:10px;line-height:14px;text-align:center;color:#d5dbe4}
+.osk-set-ico{flex:none;width:14px;height:14px;fill:currentColor}
+.osk-set-close{flex:none;width:44px;display:flex;align-items:center;justify-content:center;border-left:1px solid rgba(255,255,255,.07);font-size:13px;color:#aab3c0}
+.osk-set-tab:not(.on).osk-set-hover,.osk-set-close.osk-set-hover,.osk-set-page-btn.osk-set-hover,.osk-set-undo.osk-set-hover{background:#252c37;color:#fff}
+@media (hover:hover){.osk-set-tab:not(.on):hover,.osk-set-close:hover,.osk-set-page-btn:hover,.osk-set-undo:hover{background:#252c37;color:#fff}}
 .osk-set-body{position:relative;flex:1;min-height:0}
-.osk-set-page{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;overflow-x:hidden;overflow-y:auto;padding:2px 12px 8px;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3a414d transparent}
+.osk-set-page{position:absolute;inset:0;display:flex;gap:8px;padding:4px 6px 6px;overflow-x:hidden;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#3a414d transparent}
 .osk-set-page:not(.on){content-visibility:hidden}
 .osk-set-page.pre{content-visibility:visible;visibility:hidden}
 .osk-set-page.on{z-index:1}
-.osk-set-sec{flex:none;height:24px;display:flex;align-items:flex-end;padding:0 4px 3px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#7f8896}
-.osk-set-row{position:relative;flex:none;display:flex;align-items:center;gap:16px;min-height:50px;padding:4px 12px;border-radius:10px;background:#1b1f26;contain:layout style}
-@media (hover:hover){.osk-set-row:hover{background:#232933}}
-.osk-set-row.osk-set-hover{background:#232933}
-.osk-set .osk-set-focus{outline:3px solid #4aa8ff;outline-offset:-3px}
-.osk-set-row.osk-set-focus{background:#1d2d40}
-.osk-set-text{flex:1;min-width:0}
-.osk-set-label{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.osk-set-desc{margin-top:1px;font-size:13px;color:#8f98a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.osk-set-switch{flex:none;position:relative;width:44px;height:24px;border-radius:999px;background:#3a414d;transition:background-color 90ms ease-out}
-.osk-set-switch::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#c3cad6;transition:transform 90ms ease-out}
+.osk-set-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2px}
+.osk-set-sec{flex:none;height:15px;display:flex;align-items:center;padding:0 8px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6c7685}
+.osk-set-row{position:relative;flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;min-height:26px;padding:3px 8px 4px;border-radius:6px;background:#1a1e25;contain:layout style}
+.osk-set-row.osk-set-hover{background:#232a34;box-shadow:inset 0 0 0 1px rgba(220,232,255,.24)}
+@media (hover:hover){.osk-set-row:hover{background:#232a34}}
+.osk-set-row.osk-set-focus{background:#1a2c40}
+.osk-set-label{grid-area:1/1;min-width:0;font-size:12px;font-weight:500;line-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.osk-set-desc{grid-area:2/1/3/-1;min-width:0;font-size:10.5px;line-height:13px;color:#8a93a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.osk-set-desc.peek{color:#9fd0ff}
+.osk-set-switch,.osk-set-seg,.osk-set-chev{grid-area:1/2}
+.osk-set-action,.osk-set-slider,.osk-set-inline{grid-template-columns:auto minmax(0,1fr) auto}
+.osk-set-action .osk-set-desc,.osk-set-slider .osk-set-desc,.osk-set-inline .osk-set-desc{grid-area:1/2;padding-top:1px}
+.osk-set-action .osk-set-chev,.osk-set-slider .osk-set-val,.osk-set-inline .osk-set-seg{grid-area:1/3}
+.osk-set-toggle.paused .osk-set-desc{color:#e0b05a}
+.osk-set-toggle.paused .osk-set-switch{opacity:.5}
+.osk-set-switch{position:relative;width:28px;height:16px;border-radius:999px;background:#3a414d;transition:background-color 90ms ease-out}
+.osk-set-switch::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#c3cad6;transition:transform 90ms ease-out}
 .osk-set-toggle.on .osk-set-switch{background:${BLUE}}
-.osk-set-toggle.on .osk-set-switch::after{transform:translateX(20px);background:#fff}
-.osk-set-ctl{flex:none;display:flex;align-items:center;gap:14px;padding-right:6px}
-.osk-set-val{width:62px;height:20px;line-height:20px;contain:strict;text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:#e2efff;white-space:nowrap}
-.osk-set-track{position:relative;width:160px;height:6px;border-radius:999px;background:#343b47}
+.osk-set-toggle.on .osk-set-switch::after{transform:translateX(12px);background:#fff}
+.osk-set-slider{touch-action:none;padding-bottom:2px}
+.osk-set-val{width:36px;height:15px;line-height:15px;contain:strict;text-align:right;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:#e2efff;white-space:nowrap}
+.osk-set-track{grid-area:2/1/3/-1;position:relative;height:4px;margin:5px 6px 4px;border-radius:999px;background:#343b47}
 .osk-set-fill{position:absolute;inset:0;border-radius:999px;background:${BLUE};transform-origin:0 50%;transform:scaleX(0)}
-.osk-set-knob{position:absolute;left:0;top:-4px;width:calc(100% - 14px);height:14px}
-.osk-set-knob::before{content:"";position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;background:#fff}
-.osk-set-grid2{flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px}
-.osk-set-grid2 > *{min-width:0}
-.osk-set-grid2 .osk-set-slider{gap:10px;padding:4px 10px}
-.osk-set-grid2 .osk-set-ctl{gap:10px;padding-right:4px}
-.osk-set-grid2 .osk-set-val{width:44px}
-.osk-set-grid2 .osk-set-track{width:110px}
-.osk-set-lookrow{min-height:60px;gap:14px}
-.osk-set-slider{touch-action:none}
-.osk-set-seg{flex:none;display:flex;gap:2px;padding:2px;border-radius:10px;background:#111419}
-.osk-set-segbtn{min-width:72px;height:40px;padding:0 12px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:15px;color:#aab3c0;white-space:nowrap}
-.osk-set-segbtn.osk-set-hover{background:#2a313c}
+.osk-set-knob{position:absolute;left:-6px;top:-4px;width:100%;height:12px}
+.osk-set-knob::before{content:"";position:absolute;left:0;top:0;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(0,0,0,.3)}
+.osk-set-seg{display:flex;gap:1px;margin:-1px 0;padding:1px;border-radius:5px;background:#0e1115}
+.osk-set-segbtn{position:relative;min-width:40px;height:16px;padding:0 8px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:11px;color:#a3acb9;white-space:nowrap}
+.osk-set-segbtn::before{content:"";position:absolute;left:0;right:0;top:-5px;bottom:-8px}
+.osk-set-segbtn.osk-set-hover{background:#2c3440;color:#fff;box-shadow:inset 0 0 0 1px rgba(220,232,255,.45)}
+@media (hover:hover){.osk-set-segbtn:hover{background:#2c3440;color:#fff}}
 .osk-set-segbtn.on{background:${BLUE};color:#fff;font-weight:600}
-.osk-set-chev{flex:none;font-size:14px;color:#8f98a6}
-.osk-set-action .osk-set-chev{font-size:24px;line-height:1}
+.osk-set-chev{font-size:15px;line-height:1;color:#7f8896}
 .osk-set-disabled{opacity:.45}
 .osk-set-danger .osk-set-label{color:#ff9b91}
 .osk-set-danger.armed{background:#5c201c}
-.osk-set-danger.armed .osk-set-label{color:#fff}
-.osk-set-danger.armed .osk-set-desc{color:#ffd2cc}
-.osk-set-danger.armed::after{content:"";position:absolute;left:12px;right:12px;bottom:3px;height:3px;border-radius:2px;background:#ff9b91;transform-origin:0 50%;animation:osk-set-arm 5s linear forwards}
-.osk-set-item{gap:12px}
-.osk-set-word{flex:1;min-width:0;font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.osk-set-count{flex:none;font-size:14px;color:#8f98a6;font-variant-numeric:tabular-nums}
-.osk-set-empty{padding:24px 12px;text-align:center;font-size:15px;color:#8f98a6}
-.osk-set-help{display:grid;grid-template-columns:auto 1fr auto 1fr;align-items:center;gap:6px 10px;padding:10px 12px;border-radius:10px;background:#171a20;font-size:14px;color:#c3cad6}
-.osk-set-k{display:inline-block;min-width:20px;padding:0 6px;border-radius:5px;background:#2c333e;color:#eef2f7;font-size:13px;font-weight:600;text-align:center;white-space:nowrap}
-.osk-set-hint .osk-set-k{margin:0 4px 0 10px}
+.osk-set-danger.armed .osk-set-label,.osk-set-danger.armed .osk-set-desc{color:#fff}
+.osk-set-danger.armed::after{content:"";position:absolute;left:8px;right:8px;bottom:1px;height:2px;border-radius:2px;background:#ff9b91;transform-origin:0 50%;animation:osk-set-arm 5s linear forwards}
+.osk-set-words{flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:repeat(${LIST_PAGE / 2},auto);grid-auto-flow:column;gap:2px 8px}
+.osk-set-item{display:flex}
+.osk-set-word{flex:1;min-width:0;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.osk-set-count{flex:none;font-size:10.5px;color:#8a93a1;font-variant-numeric:tabular-nums}
+.osk-set-item .osk-set-chev{font-size:10.5px;opacity:.55}
+.osk-set-item.osk-set-hover .osk-set-chev,.osk-set-item.osk-set-focus .osk-set-chev{opacity:1;color:#ff9b91}
+@media (hover:hover){.osk-set-item:hover .osk-set-chev{opacity:1;color:#ff9b91}}
+.osk-set-empty{padding:16px 12px;text-align:center;font-size:12px;color:#8a93a1}
+.osk-set-help{flex:none;display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:4px 6px;padding:6px 8px;border-radius:6px;background:#161a20;font-size:10.5px;color:#aeb6c2}
+.osk-set-help .osk-set-k{justify-self:start}
+.osk-set-help-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.osk-set-k{display:inline-block;min-width:15px;padding:0 4px;border-radius:3px;background:#2a313b;color:#e8ecf1;font-size:10px;font-weight:700;line-height:14px;text-align:center;white-space:nowrap}
+.osk-set-version{flex:none;padding:4px 8px 0;font-size:10px;line-height:13px;color:#6c7685}
+.osk-set-foot{flex:none;height:20px;display:flex;align-items:center;gap:8px;padding:0 6px 0 8px;background:#0d1014;border-top:1px solid rgba(255,255,255,.07);font-size:10.5px;color:#8a93a1}
+.osk-set-hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden}
+.osk-set-hint .osk-set-k{margin:0 3px 0 9px}
 .osk-set-hint .osk-set-k:first-child{margin-left:0}
-.osk-set-info{padding:6px 12px;font-size:13px;color:#8b93a1}
-.osk-set-foot{flex:none;height:32px;display:flex;align-items:center;gap:12px;padding:0 12px;border-top:1px solid rgba(255,255,255,.06);font-size:13px;color:#8f98a6}
-.osk-set-hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.osk-set-undo{flex:none;height:28px;display:flex;align-items:center;padding:0 12px;border-radius:999px;background:#24364c;color:#eef2f7;font-size:14px;white-space:nowrap}
-.osk-set-pager{flex:none;display:flex;align-items:center;gap:4px}
-.osk-set-pageno{min-width:84px;text-align:center;font-size:13px;color:#c3cad6;font-variant-numeric:tabular-nums}
-.osk-set-page-btn{width:36px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#232933;color:#e9edf2;font-size:20px;line-height:1}
-.osk-set-pv{position:relative;flex:none;width:230px;height:52px;border-radius:8px;overflow:hidden;background:repeating-linear-gradient(90deg,rgba(255,255,255,.28) 0 2px,transparent 2px 14px),linear-gradient(120deg,#1f6fd1,#7a4bc2 50%,#f08a24)}
-.osk-set-pv-check{position:absolute;left:0;right:0;top:3px;height:14px;background:repeating-conic-gradient(rgba(0,0,0,.35) 0 25%,rgba(255,255,255,.35) 0 50%) 0 0/7px 7px}
-.osk-set-pv-kb{position:absolute;left:50%;top:3px;bottom:3px;width:170px;margin-left:-85px;display:flex;flex-direction:column;gap:2px;padding:0 4px 3px;border-radius:5px;background:rgba(var(--pv-board),var(--osk-ba));-webkit-backdrop-filter:blur(var(--pv-blur));backdrop-filter:blur(var(--pv-blur));color:var(--pv-text);font-size:10px;line-height:1}
-.osk-set-pv-strip{height:14px;margin:0 -4px;padding:1px 4px;display:flex;gap:3px;border-radius:5px 5px 0 0;background:rgba(var(--pv-board),var(--osk-ra))}
+.osk-set-undo{flex:none;height:16px;display:flex;align-items:center;padding:0 10px;border-radius:999px;background:#24364c;color:#eef2f7;white-space:nowrap}
+.osk-set-pager{flex:none;display:flex;align-items:center;gap:2px}
+.osk-set-pageno{min-width:64px;text-align:center;color:#c3cad6;font-variant-numeric:tabular-nums}
+.osk-set-page-btn{position:relative;width:36px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:999px;background:#232933;color:#e8ecf1;font-size:14px;line-height:1}
+.osk-set-pv{position:relative;flex:none;height:36px;border-radius:6px;overflow:hidden;background:repeating-linear-gradient(90deg,rgba(255,255,255,.28) 0 2px,transparent 2px 14px),linear-gradient(120deg,#1f6fd1,#7a4bc2 50%,#f08a24)}
+.osk-set-pv-check{position:absolute;left:0;right:0;top:3px;height:10px;background:repeating-conic-gradient(rgba(0,0,0,.35) 0 25%,rgba(255,255,255,.35) 0 50%) 0 0/6px 6px}
+.osk-set-pv-kb{position:absolute;left:50%;top:3px;bottom:3px;width:160px;margin-left:-80px;display:flex;flex-direction:column;gap:2px;padding:0 4px 3px;border-radius:5px;background:rgba(var(--pv-board),var(--osk-ba));-webkit-backdrop-filter:blur(var(--pv-blur));backdrop-filter:blur(var(--pv-blur));color:var(--pv-text);font-size:8px;line-height:1}
+.osk-set-pv-strip{height:10px;margin:0 -4px;padding:1px 4px;display:flex;gap:3px;border-radius:5px 5px 0 0;background:rgba(var(--pv-board),var(--osk-ra))}
 .osk-set-pv-chip{flex:1;display:flex;align-items:center;justify-content:center;border-radius:999px;background:rgba(255,255,255,.08)}
 .osk-set-pv-keys{flex:1;display:flex;gap:2px}
-.osk-set-pv-key{flex:1;display:flex;align-items:center;justify-content:center;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-ka));font-size:12px}
+.osk-set-pv-key{flex:1;display:flex;align-items:center;justify-content:center;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-ka));font-size:9px}
 .osk-set-pv-meta{background:rgba(var(--pv-meta),var(--osk-ma))}
-.osk-set-pv-space{height:9px;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-sa))}
+.osk-set-pv-space{height:6px;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-sa))}
 .osk-set-asking > :not(.osk-set-consent){display:none !important}
 .osk-set-consent{display:none}
-.osk-set-asking > .osk-set-consent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:10px 24px;text-align:center}
-.osk-set-consent-text{max-width:620px;font-size:18px;line-height:1.35;color:#eef2f7}
-.osk-set-consent-buttons{display:flex;gap:14px}
-.osk-set-consent-buttons .osk-set-btn{min-width:180px;min-height:48px;display:flex;align-items:center;justify-content:center;border-radius:10px;font-size:17px;font-weight:600}
+.osk-set-asking > .osk-set-consent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:8px 20px;text-align:center}
+.osk-set-consent-text{max-width:540px;font-size:15px;line-height:1.35;color:#eef2f7}
+.osk-set-consent-buttons{display:flex;gap:12px}
+.osk-set-consent-buttons .osk-set-btn{min-width:180px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:14px;font-weight:600}
+.osk-set-consent-buttons .osk-set-hover{box-shadow:inset 0 0 0 2px rgba(220,232,255,.55)}
 .osk-set-primary{background:${BLUE};color:#fff}
 .osk-set-secondary{background:#2b3240}
-.osk-set-consent-hint{font-size:15px;color:#a3abb7}
-.osk-set-consent-later{font-size:14px;color:#8b93a1}`;
+.osk-set-consent-hint{font-size:12px;color:#a3abb7}
+.osk-set-consent-later{font-size:11px;color:#8b93a1}
+.osk-set.narrow .osk-set-page{flex-direction:column;gap:2px}
+.osk-set.narrow .osk-set-col{flex:none}
+.osk-set.narrow .osk-set-words{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-flow:row}
+.osk-set.tiny .osk-set-tab-label,.osk-set.tiny .osk-set-desc,.osk-set.tiny .osk-set-hint{display:none}`;
     doc.head.appendChild(st);
     state.styles = [...(state.styles ?? []), st];
   }
@@ -4505,7 +4602,28 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
                 note(e);
               }
             }
+            if (on && P.open) {
+              try {
+                y = panelPadY(this, y);
+                panelPadNested(this, pad, side, x, y);
+              } catch (e) {
+                note(e);
+              }
+            }
             const r = orig.call(this, pad, which, on, x, y, ...rest);
+            if (on && P.drag?.side === side) {
+              try {
+                dragSlider(P.drag, x);
+              } catch (e) {
+                note(e);
+              }
+            } else if (on && P.open) {
+              try {
+                panelPadScroll(side, x, y);
+              } catch (e) {
+                note(e);
+              }
+            }
             if (mode?.onPad) {
               try {
                 mode.onPad(this, side, on, modeApi);
@@ -4712,6 +4830,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
               if (from !== to) {
                 if (from?.classList?.contains("osk-set-btn")) from.classList.remove("osk-set-hover");
                 if (to?.classList?.contains("osk-set-btn")) to.classList.add("osk-set-hover");
+                if (P.open) setHover(to?.classList?.contains("osk-set-btn") ? to.getAttribute("data-key") : null);
               }
             } catch (e) {
               note(e);
@@ -5309,7 +5428,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
   };
   state.panel = P;
   state.effective = (name) => eff(name);
-  state.sectionOf = (id) => Object.keys(PANEL_ROWS).find((t) => PANEL_ROWS[t].some(([, ids]) => ids.flat().includes(id))) ?? null;
+  state.sectionOf = (id) => Object.keys(PANEL_ROWS).find((t) => PANEL_ROWS[t].flat().some(([, ids]) => ids.includes(id))) ?? null;
   state.forget = (word) => {
     const eng = getEngine();
     if (!eng) return false;

@@ -3,8 +3,8 @@
 What `keyboard/src/` does inside Steam, the injector API and the simulator. User-facing docs are in the
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
-The keyboard calls itself **VaporType** to users (panel title, version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v30) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
+The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
+`osk` names. `patch.js` (v31) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
 `TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
 
 - **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
@@ -265,55 +265,77 @@ The keyboard calls itself **VaporType** to users (panel title, version line, fir
   0 in 1233), and in a local gamescope harness: [BAKEOFFS-output.md](BAKEOFFS-output.md); source reading behind it in
   [research/gamescope-ime.md](research/gamescope-ime.md) and [research/steam-text-path.md](research/steam-text-path.md).
 - **Settings panel.** Holding the emoji key (550 ms) opens a panel over the keys, in the keyboard's own rectangle
-  (854 x 286 CSS px on the Deck); a short press still switches to emoji. The emoji key has an 18 px dark corner badge
-  with a 14 px light gear and a ring that fills while it is held. Works with a pad click, the touchscreen and A on the
-  gamepad-focused key. It fades in over 90 ms with a 1.5 % scale (none with `prefers-reduced-motion`). Frame, top to
-  bottom: a 36 px header (wordmark "VaporType", status "Big letter keys · 57 words · vN": the real learned count, "1 word" in the singular, a ✕ close button), a 40 px
-  tab bar (icon and label, the active tab a dark blue pill with a 2 px #4aa8ff underline, the Words tab with its word
-  count, "LB ◂ ▸ RB" at the right), the scrolling body, and a 32 px footer with one 13 px line naming what the buttons do on the focused row ("A Toggle", "◂ ▸ Change", "A Select", "A Forget", "L2/R2 Page" only on a paged Words list, then "LB/RB Tabs", "B Close"; "A Confirm · B Cancel" while Forget everything is armed),
-  the Words undo and the Words pager. Tabs and rows (`PANEL_TABS`, `PANEL_ROWS` in `patch.js`, section headers in
-  capitals):
+  (854 x 286 CSS px on the Deck), at least `PANEL_MIN_H` (252) tall: with the suggestion row off the keyboard is
+  239 px, so the panel grows upward by 13 px and the pads' up/down range is stretched onto it (`panelPadY`). A short
+  press still switches to emoji. The emoji key has an 18 px dark corner badge with a 14 px light gear and a ring that
+  fills while it is held. Works with a pad click, the touchscreen and A on the gamepad-focused key. It fades in over
+  90 ms with a 1.5 % scale (none with `prefers-reduced-motion`). Frame, top to bottom: a 26 px tab bar of five
+  equal-width tabs across the whole width (icon and 12 px label, the active tab a lighter cell with a 2 px #4aa8ff
+  underline, the Words tab with its word count) and a 44 px ✕ at the right; the body; and a 20 px footer naming what
+  the buttons do on the focused row ("A Toggle", "◂ ▸ Change", "A Select", "A Forget", "L2/R2 Page" only on a paged
+  Words list, then "LB/RB Tabs", "B Close"; "A Confirm · B Cancel" while Forget everything is armed), the Words undo
+  and the Words pager. Tabs and rows (`PANEL_TABS`, `PANEL_ROWS` in `patch.js`; each tab is a left and a right column,
+  each column its sections, section headers in capitals):
 
-  | tab | sections and rows |
-  |---|---|
-  | Typing | Layout: Typing mode (Standard / Big keys), Swipe typing · Spelling: Autocorrect, Suggestion row, Automatic word spacing, Remove auto space before punctuation, Learn new words |
-  | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) · Buttons: Slide space bar to move cursor, LB / RB hold Ctrl / Alt, Enter closes keyboard |
-  | Look | Look (Modern / Steam / OLED) with the live preview in its row, Keyboard background, Keys, Space bar, Top strip (two per row, all four visible on open), Glass (Off / Light / Strong) · Feedback: Swipe trail, Show typed text · Reset look |
-  | Words | List (Learned (n) / Blocked (n)), then 8 words a page with their count |
-  | System | Privacy: Private mode, Keep typing log, Clear typing log · About: the version line · Controls: a gamepad help card · Forget everything |
+  | tab | left column | right column |
+  |---|---|---|
+  | Typing | Keys: Typing mode (Standard / Big keys), Swipe typing, Suggestion row | Spelling: Autocorrect, Learn new words, Automatic word spacing, Remove auto space before punctuation |
+  | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) | Buttons: Slide space bar to move cursor, LB / RB hold Ctrl / Alt, Enter closes keyboard |
+  | Look | Style: Theme (Modern / Steam / OLED), Glass (Off / Light / Strong), Swipe trail, Show typed text, Reset look | Opacity: the live preview, Keyboard background, Keys, Space bar, Top strip |
+  | Words | List (Learned (n) / Blocked (n)) across both columns, then 12 words a page, six down each column, with their count | |
+  | System | Privacy: Private mode, Keep typing log, Clear typing log, Forget everything | Controls: a help card for the pads and buttons, the version line |
 
-  Row ids give the row type: `t_<setting>` a toggle (`TOGGLE_LABELS`: label and one-line description, a 44 x 24
-  switch), `s_<setting>` a slider (`SLIDERS`: `label`, `desc`, `min`, `max`, `step`, `text(value)`; the value and a
-  160 px track with a 14 px knob; 110 px in the Look tab's two-column grid, a nested list in `PANEL_ROWS`), `c_<setting>` a segmented row (`CHOICES`, or `GLASS` for `blur`: 2-4 buttons, the
-  current one blue, the description line is the selected option's), then the actions `reset_look` and `clear_log`
-  (chevron), the danger row `forget_all`, the list rows `w_0`..`w_7`, and the non-focusable `version` and
-  `help`. Every row is at least 48 px tall with a 16 px semibold label and a 13 px description; segment buttons are
-  40 px. One entry in the table adds a setting of that type; every write goes through `setSetting`, which saves it and
-  repaints only the rows bound to that setting (`paintSetting`).
+  The two columns meet at the middle of the panel, where Steam splits the pads (the left pad reaches 55 % of the
+  width from the left, the right pad 55 % from the right), so each thumb has its own column and both reach the tabs
+  and the ✕. Row ids give the row type: `t_<setting>` a toggle (`TOGGLE_LABELS`: label and one-line description, a
+  28 x 16 switch), `s_<setting>` a slider (`SLIDERS`: `label`, `desc`, `min`, `max`, `step`, `text(value)`; label,
+  description and value on one line and a track the full width of the row under them), `c_<setting>` a segmented row
+  (`CHOICES`, or `GLASS` for `blur`: 2-4 buttons, the current one blue, the description line is the selected
+  option's), then the actions `reset_look` and `clear_log` (description on the label's line, chevron), the danger row
+  `forget_all`, the list rows `w_0`..`w_11`, and the non-focusable `preview`, `version` and `help`. Labels are 12 px
+  medium, descriptions 10.5 px on a second line, segment buttons 11 px; toggles and segmented rows are 36 px, sliders
+  33 px, actions and words 26 px, 2 px apart. Every tab fits without scrolling at 252 px. One entry in the table adds
+  a setting of that type; every write goes through `setSetting`, which saves it and repaints only the rows bound to
+  that setting (`paintSetting`).
 
-  Behaviour. One focus ring (3 px #4aa8ff outline on a lighter blue-grey fill) marks the focused row, and opening
-  the panel focuses the tab's first row, so the ring is always there; up / down move through the active tab and
-  the rows and wrap; the page scrolls just enough to keep the focused row (and its section header) visible. A held
-  stick or D-pad repeats after 350 ms at 8 per second on its own timer; Steam's `is_repeat` events are ignored. On the
-  tab bar left / right switch tabs and A goes into the list; LB / RB switch tabs from anywhere (wrapping) and focus the
-  new tab; LT / RT page the Words list (wrapping) and switch tabs elsewhere. On a row: A switches a toggle, steps a
-  slider up (wrapping) or a segmented row to the next choice, and runs an action; left / right switch a toggle, step a
-  slider by `step` (holding repeats after 400 ms at about 12 per second until release or the end), or move a
-  segmented choice (stopping at the ends). B cancels an armed Forget everything, otherwise closes the panel. X, Y and
-  Backspace do nothing while it is open. Touch acts on release inside the same row and never when the drag scrolled the
-  list; a horizontal drag on a slider sets it live; a pad click, touch or mouse click on a slider's track sets the value
-  under it, on a segment picks it, and moves the focus to that row. Mouse and pad hover only shade a row. Words: A or a
-  tap forgets a learned word or unblocks a blocked one and puts `Forgot "x" — A to undo` in the footer for 5 s with the
-  focus on it (up / down go back to the list); the pager "‹ Page 1 / 4 ›" is tappable. Forget everything is armed by
-  the first press (red, "Press again to forget everything", a 5 s countdown bar) and runs on a second press within
-  5 s. Clear typing log is greyed out while the log is off and nothing was written (`logFile`).
+  Narrower than 600 px the columns stack and the page scrolls; narrower than 420 px the tab labels, descriptions and
+  footer hints go (container queries on the panel).
 
-  Live preview. The Look row carries a 230 x 52 px box between its label and its choices: a blue-to-orange striped
-  "game" gradient with a checkerboard band, and over it a small keyboard (suggestion strip, q w e ⌫, space bar) painted with the look's colours and the same
-  `--osk-ba`, `--osk-ka`, `--osk-ma`, `--osk-sa`, `--osk-ra` values as the real keyboard (`lookValues()`), each set on
-  the one element that uses it, plus the glass blur. While the panel is open it covers the keyboard, so look changes
-  update the preview at once and reach the keyboard's stylesheets (`applyLook`) when the panel closes; rewriting those
-  sheets restyles the whole document.
+  Pads. A pad pointing at a row rings and lightens it; pointing at a segment rings that segment and shows its
+  description in blue in place of the row's own ("Past middle: Each pad reaches three quarters across"), so a choice
+  can be read before it is clicked. Segment buttons take pad hits 5 px above and 8 px below themselves, which makes
+  them as tall as their row. Steam keeps the last hit element while the pad stays inside its rectangle, so
+  `panelPadNested` re-runs the hit-test when a row with segments is under the pad. A pad click on a slider sets the
+  value under it and then drags it with the pad until that pad is released (`P.drag`); a mouse drags it the same way.
+  Holding a pad within 20 px of the bottom (14 px of the top) of a page that does not fit scrolls it at 300 px/s.
+
+  Behaviour. One focus ring (2 px #4aa8ff outline on a blue fill) marks the focused row, and opening the panel focuses
+  the tab's first row, so the ring is always there; up / down move through the active tab (the tab, the left column,
+  then the right column) and wrap; the page scrolls just enough to keep the focused row (and its section header)
+  visible. A held stick or D-pad repeats after 350 ms at 8 per second on its own timer; Steam's `is_repeat` events
+  are ignored. On the tab bar left / right switch tabs and A goes into the list; LB / RB switch tabs from anywhere
+  (wrapping) and focus the new tab; LT / RT page the Words list (wrapping) and switch tabs elsewhere. On a row: A
+  switches a toggle, steps a slider up (wrapping) or a segmented row to the next choice, and runs an action; left /
+  right step a slider by `step` (holding repeats after 400 ms at about 12 per second until release or the end), move a
+  segmented choice (stopping at the ends), and on any other row move the focus to the nearest row of the other column
+  (`sideStep`). B cancels an armed Forget everything, otherwise closes the panel. X, Y and Backspace do nothing while
+  it is open. Touch acts on release inside the same row and never when the drag scrolled the list; a horizontal drag
+  on a slider sets it live; a pad click, touch or mouse click on a slider's track sets the value under it, on a segment
+  picks it, and moves the focus to that row. Mouse and pad hover never move the focus. Words: A or a tap forgets a
+  learned word or unblocks a blocked one and puts `Forgot "x" — A to undo` in the footer for 5 s with the focus on it
+  (up / down go back to the list); the pager "‹ Page 1 / 4 ›" is tappable; the "Forget" on each word is dim until the
+  row is pointed at or focused. Forget everything is armed by the first press (red, "Press again to forget", "B
+  cancels · this cannot be undone", a 5 s countdown bar) and runs on a second press within 5 s. Clear typing log is
+  greyed out while the log is off and nothing was written (`logFile`), and reads "Typing log cleared" for 5 s after
+  it ran. A toggle that private mode or the unanswered first-use card holds off keeps its switch, dimmed, with "Paused
+  while private mode is on" in amber as its description.
+
+  Live preview. The Opacity column starts with a 36 px box as wide as the column: a blue-to-orange striped "game"
+  gradient with a checkerboard band, and over it a small keyboard (suggestion strip, q w e ⌫, space bar) painted with
+  the look's colours and the same `--osk-ba`, `--osk-ka`, `--osk-ma`, `--osk-sa`, `--osk-ra` values as the real
+  keyboard (`lookValues()`), each set on the one element that uses it, plus the glass blur. While the panel is open it
+  covers the keyboard, so look changes update the preview at once and reach the keyboard's stylesheets (`applyLook`)
+  when the panel closes; rewriting those sheets restyles the whole document.
 
   Performance. Each tab's DOM is built once (the open tab on open, the others one per 40 ms afterwards, laid out
   hidden and then kept with `content-visibility: hidden`), rows are kept in a map, and a change touches only its row:
@@ -340,6 +362,12 @@ The keyboard calls itself **VaporType** to users (panel title, version line, fir
   first open 18.6, open again 2.7, tab 0.7 / 2.0, toggle 0.5 / 0.9, slider 0.7 / 0.9. The panel builds nothing until
   it opens. The first open lays out about 90 elements under Steam's stylesheets (style and first text layout are most
   of it); every later open reuses them.
+
+  Re-measured on 2026-10-28 for the two-column layout (keyboard v31) on a busier host, at 4x, median / p95 over two
+  runs: first open 39-46, open again 14.5-15.2, tab 4.7-5.3 / 9.2-9.4, toggle 2.8-2.9 / 3.8-4.7, Typing mode
+  10.8-11.0 / 15.3-18.0, slider 3.7-4.2 / 5.6-6.3. v30 on the same host the same day, three runs: first open 34-51,
+  open again 11.3-14.0, tab 3.7-5.0 / 7.8-11.0, toggle 2.5-3.0 / 4.0-4.3, Typing mode 11.0-12.4 / 15.7-16.9, slider
+  3.3-4.8 / 5.0-5.9. The Typing mode step sits at its 16 ms budget on that host with either version.
 
   The version line in System reads "VaporType vN · engine vN · words vN · pairs vN · modes vN · installed <date>"
   (`installed.json` beside the standalone injector; the plugin reports its own install date). Any hold (pad, touch,
@@ -510,18 +538,25 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   Forget everything, closing with the keyboard, and settings coming back from the `takeUserWords()` JSON after a
   "Steam restart" (new page) and from `localStorage` (a setting changed after the last file save beats the older file
   copy; a newer file beats an older `localStorage`), the Look sliders (defaults, D-pad step and held repeat,
-  clamping, a pad click on the track, the look CSS applied on close, Glass, Reset look), and the old `opacity`
+  clamping, a pad click on the track, the look CSS applied on close, Glass, Reset look), the pads through Steam's
+  analog callback (a sweep of both pads over every tab, keyboard full and short: every control reached, nothing
+  outside the panel hit, every page fits without scrolling; a pad on a segment ringing it and showing its description
+  in the row; a pad click on a slider's track setting it and dragging it until release, one on its label dragging
+  from the current value), and the old `opacity`
   setting migrating (80, OLED 90, Steam 100, 70, a full v0.2.3 settings object, junk values), a saved Fast taps or
   Columns mode loading as Big letter keys and a saved `onePad: true` as Right pad only. `SHOTS=<dir>` saves
   panel screenshots.
-- `node keyboard/sim/menu-test.mjs` (`PATCH=<file>` for another version): the panel's frame (header status, one-line
-  tab bar of five tabs with icons, "LB ◂ ▸ RB", footer hints, section headers) and rows (16 px label, one-line 13 px
-  description, control on the right, at least 48 px); LB / RB through all tabs with the wrap and the focus on the new
-  tab, left / right and A on the tab bar, LT / RT paging an 8-a-page Words list and stepping tabs elsewhere; one focus
-  ring, up / down wrapping and the list scrolling just enough; a held stick repeating at about 8 per second after
-  350 ms with Steam's repeats ignored; toggles by A and left / right; X, Y and Backspace doing nothing; segmented rows
-  by A, left / right (stopping at the ends) and a click; sliders by left / right, a held direction, A and a click on
-  the track; the live preview following a slider step without re-rendering the rows; no node of the panel replaced by
+- `node keyboard/sim/menu-test.mjs` (`PATCH=<file>` for another version): the panel's frame (one 26 px bar of five
+  equal tabs with icons and the ✕ across the whole width, no wordmark or status, two columns meeting at the middle,
+  section headers, a 20 px footer with hints) and rows (12 px label, a one-line 10.5 px description under it, control
+  on the right, 36 px); the Words tab count; LB / RB through all tabs with the wrap and the focus on the new tab, left
+  / right and A on the tab bar, LT / RT paging a 12-a-page Words list and stepping tabs elsewhere; one focus ring, up /
+  down wrapping through the tab, the left column and the right column with nothing scrolling; a held stick repeating
+  at about 8 per second after 350 ms with Steam's repeats ignored; toggles by A, left / right moving to the row beside
+  it in the other column; X, Y and Backspace doing nothing; segmented rows by A, left / right (stopping at the ends)
+  and a click; sliders by left / right, a held direction, A and a click on the track (a click on the label changes
+  nothing); the preview heading the Opacity column; the live preview following a slider step without re-rendering
+  the rows; no node of the panel replaced by
   toggles, sliders or tab switches; Words forget / undo (and its 5 s expiry) and unblock / undo; Forget everything
   arming, B cancelling it before closing the panel, and the 5 s window; touch acting on release and not after a
   scroll, mouse hover not moving the focus; and with the panel open or closed that bumper, trigger, stick and face
@@ -568,7 +603,7 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   ("hello" in private, "world" after: no pair, nothing logged or kept), Enter- and
   close-ended words not learned (known word, phrase, repeated password-like word), forget requests pending until
   `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (Keep off by
-  pad, Turn on by D-pad and A, existing users skip it), the VaporType title and version line, and the typing log off
+  pad, Turn on by D-pad and A, existing users skip it), the VaporType version line (and no wordmark), and the typing log off
   by default with nothing typed kept and `keyboardOpen()` following the keyboard. `inject-test.mjs` adds a forget
   whose replacement save fails (`user-words.json.tmp` undeletable): not acknowledged, no forgotten word on disk or
   after a restart, finished once the fault clears; a forget kept pending through five failed deliveries (`.bak` made
