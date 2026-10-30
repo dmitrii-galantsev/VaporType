@@ -553,6 +553,87 @@ await scenario(
   },
   (o) => o === "lpl ",
 );
+const bumper = async (button) => {
+  await vgp("vgp_onbuttondown", button);
+  await sleep(20);
+  await vgp("vgp_onbuttonup", button);
+  await sleep(30);
+};
+const badges = () =>
+  page.evaluate(() =>
+    [0, 1, 2].map((i) => {
+      const e = document.querySelector(`[data-key="OSKSug_${i}"]`);
+      return e?.classList.contains("osk-sug-rb") ? "RB" : e?.classList.contains("osk-sug-lb") ? "LB" : "";
+    }),
+  );
+await setSetting("bumpers", "pick");
+await setSetting("typingLog", true);
+await scenario(
+  "Pick words: typing lpl marks the middle chip RB and the right chip LB",
+  async () => {
+    for (const k of "lpl") await padTap("R", k);
+    await settle(page);
+    return { badges: await badges() };
+  },
+  (o, s, x) => o === "lpl" && s[1] === "lol" && x.badges.join() === ",RB,LB",
+);
+await scenario(
+  "RB types the middle chip: lpl -> lol and a space, logged as via RB, no Ctrl or Alt",
+  async () => {
+    await bumper(6);
+    await settle(page);
+    await page.evaluate(() => window.__oskTrackpadFix.flushLog());
+    const log = JSON.parse((await page.evaluate(() => window.__oskTrackpadFix.takeTypingLog())) ?? '{"lines":[]}');
+    const rec = log.lines.map((l) => JSON.parse(l)).find((r) => r.type === "word" && r.committed === "lol");
+    const held = await kbEval((kb) => [kb.state.toggleStates.Control, kb.state.toggleStates.Alt]);
+    return { via: rec?.via, outcome: rec?.outcome, held, sent: await page.evaluate(() => [...window.__oskTrackpadFix.sent.keys()]) };
+  },
+  (o, s, x) => o === "⌫⌫⌫lol " && x.via === "RB" && x.outcome === "picked" && !(x.held[0] & 7) && !(x.held[1] & 7) && !x.sent.length,
+);
+await scenario(
+  "after a space RB types the middle prediction and LB the left one",
+  async () => {
+    for (const k of "how") await padTap("R", k);
+    await padTap("R", " ");
+    await settle(page);
+    const first = await labels();
+    const b1 = await badges();
+    await bumper(6);
+    await settle(page);
+    const second = await labels();
+    const b2 = await badges();
+    await bumper(5);
+    return { first, b1, second, b2 };
+  },
+  (o, s, x) =>
+    !!x.first[1] && !!x.second[0] && x.b1.join() === "LB,RB," && x.b2.join() === "LB,RB," && o === `how ${x.first[1]} ${x.second[0]} `,
+);
+await scenario(
+  "LB types the right chip while typing",
+  async () => {
+    for (const k of "lpl") await padTap("R", k);
+    await settle(page);
+    const before = await labels();
+    await bumper(5);
+    return { before };
+  },
+  (o, s, x) => !!x.before[2] && o === `lpl⌫⌫⌫${x.before[2]} `,
+);
+await scenario(
+  "after Enter there is no word to pick: the bumpers type nothing and hold nothing",
+  async () => {
+    await padTap("R", "Enter");
+    await settle(page);
+    await bumper(5);
+    await bumper(6);
+    return { held: await kbEval((kb) => [kb.state.toggleStates.Control, kb.state.toggleStates.Alt]), b: await badges() };
+  },
+  (o, s, x) => /^⌫?⏎$/.test(o) && !(x.held[0] & 7) && !(x.held[1] & 7) && x.b.join() === ",,",
+);
+await setSetting("bumpers", true);
+await setSetting("typingLog", false);
+await padTap("R", " ");
+
 await scenario(
   "Backspace still undoes autocorrect: teh + space -> the, Backspace -> teh",
   async () => {

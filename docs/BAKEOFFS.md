@@ -594,3 +594,32 @@ The generated corpora over-count this project's topics: "watch" and "deck" get z
 Frozen eval set, measured once (current → candidate): sentence swipe 94.1 / 95.9 / 83.9 / 80.7 → 94.4 / 97.3 / 85.2 / 80.8 (4 eval tokens out of vocabulary); next word 16.9 / 29.2 → 16.3 / 28.4; run-together fixed 91.1 → 87.3; noisy taps fixed / wrong 50.6 / 2.6 → 50.9 / 1.7; clean words auto-changed 0 → 1 of 967; typo row top-1 / top-3 90.2 / 97.9 → 90.0 / 97.8, auto-fixed 79.0 → 79.2, mid-word top-3 79.5 → 85.1; eval tokens in vocab 100 → 99.6 %, no-context top-1 one pad / sloppy 85.3 / 69.3 → 84.4 / 72.2. Decoding is about 30 % slower (13.5 → 18.0 ms mean on the workstation) with 59,820 entries.
 
 Decision: wordfreq stays the default (`OSK_WORDFREQ` defaults to 1; the default build still reproduces the shipped words.js v4 and lm.js v4 byte for byte), so words/lm versions are unchanged. The cost of switching to permissive data: one more game name auto-changed ("decky"), one clean eval word changed, −3.8 run-together fixes and −0.6 next-word top-1 on the eval set, and 30 % slower decoding; swipes and mid-word suggestions are level or better.
+
+## Typing log review (2026-10-30)
+
+Source: the author's own Deck typing log, keyboard v21 to v31, 2026-10-23 to 2026-10-30, 2,347 word records. The
+first evening (v21 to v23) was scripted drills of the same few words and is left out. From 2026-10-24 on it is ordinary
+chat while playing: 1,976 words in 248 bursts (a gap over 2 minutes starts a new one), a median of 6 words a burst and
+1.8 s between words. The log is private and not in the repo. `node keyboard/bench/bench-log.mjs` replays any typing log
+through the current engine and prints the replay numbers below (`OSK_TYPING_LOG=<file> OSK_LOG_SINCE=2026-10-24T00:00`,
+`OSK_USER_WORDS=<user-words.json>` to add learned words).
+
+- **Taps carry the typing.** 1,945 of the 1,976 words were tapped and 24 swiped, 8 of those deleted. Six next-word
+  predictions were picked. Since v29 (2026-10-25) there have been 4 swipes in 1,486 words. At the end of the period
+  the Deck had autocorrect off, swipe threshold Large, LB / RB holding Ctrl / Alt off, and Enter closes keyboard on.
+- **Tap positions are centred.** Over 6,072 tapped letters of kept dictionary words (v26 on, when every tap has a
+  position), the mean offset from the key centre is at most 0.055 key in x and y on either pad and in any letter row,
+  with σ 0.15 to 0.19 key. A per-pad offset correction would not help.
+- **Suggestions are seldom picked.** In tapped words of 2 letters or more, picks saved 89 of 8,543 presses (letters
+  plus the space), 1.0 %. In the replay, the middle chip showed the finished word with letters still to type for 995
+  of those words. Picking it at once would save 1,796 presses (21.0 %), or 26.9 % counting the right chip too. In Big
+  letter keys the chips are at the top edge of each pad, a thumb's trip away from the letters.
+- **Autocorrect is off for a reason.** Replayed on 1,722 tapped words, it would change 87 that were kept as typed, 47
+  of them only by adding an apostrophe. With the Deck's learned words that drops to 39 (9 apostrophes). Of the 5
+  misspellings fixed by picking from the row, it would have fixed 1.
+
+Decision (keyboard v32): LB / RB becomes a choice with a new **Pick words** option. RB types the best chip and LB the
+other one, and badges on the chips show which is which, so a pick costs one index-finger press. Ctrl / Alt stays the
+default, and a saved "off" stays Off. The log could not show how often a tap missed its key, because Backspace inside
+a word left no trace. Tapped words now carry `erased`, the letters Backspace removed with their tap positions, and
+bumper picks carry `via`, so the next review can measure tap misses and whether Pick words gets used.

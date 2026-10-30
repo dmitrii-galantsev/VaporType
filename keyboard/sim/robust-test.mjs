@@ -111,7 +111,7 @@ function helpers(page) {
 async function mainBlock() {
   const { page, errors, status } = await fresh();
   const h = helpers(page);
-  check(/^v31 layouts=\d+ keyboard=patched/.test(status) || /^v31 layouts=\d+ keyboard=waiting/.test(status), "patch loads", status);
+  check(/^v32 layouts=\d+ keyboard=patched/.test(status) || /^v32 layouts=\d+ keyboard=waiting/.test(status), "patch loads", status);
 
   await h.F(() => {
     const eng = window.__oskEngine;
@@ -162,7 +162,9 @@ async function mainBlock() {
   await h.padTap("L", "OSKSug_1");
   await h.padStroke("R", "pol", 1.5);
   await h.padTap("R", "Backspace");
-  for (const k of "pool") await h.padTap("R", k);
+  for (const k of "pp") await h.padTap("R", k);
+  await h.padTap("R", "Backspace");
+  for (const k of "ool") await h.padTap("R", k);
   await h.padTap("R", " ");
   for (const k of "secret") await h.padTap("R", k);
   await h.padTap("R", "Enter");
@@ -187,20 +189,24 @@ async function mainBlock() {
   const tapRec = recs.find((r) => r.type === "word" && r.kind === "tap" && r.committed === "pool");
   const swipeRec = recs.find((r) => r.kind === "swipe");
   check(
-    env?.versions?.keyboard === 31 &&
+    env?.versions?.keyboard === 32 &&
       env.versions.engine > 0 &&
       env.versions.installed === "2026-10-23" &&
       env.settings?.mode &&
       geo?.keys?.a?.length === 4 &&
       tapRec?.taps?.length === 4 &&
       tapRec.taps.every((t) => typeof t.x === "number") &&
+      tapRec.erased?.length === 1 &&
+      tapRec.erased[0].c === "p" &&
+      typeof tapRec.erased[0].x === "number" &&
       swipeRec?.trace?.length > 5 &&
       swipeRec.top?.length > 0,
-    "log has versions, settings, key geometry, tap positions, swipe trace and candidates",
+    "log has versions, settings, key geometry, tap positions, erased letters, swipe trace and candidates",
     {
       env,
       geo: geo && Object.keys(geo.keys).length,
       tapTaps: tapRec?.taps?.length,
+      erased: tapRec?.erased,
       trace: swipeRec?.trace?.length,
       top: swipeRec?.top?.slice(0, 2),
     },
@@ -270,9 +276,9 @@ async function mainBlock() {
       .map((k) => !!document.querySelector(`[data-key="OSKSet_t_${k}"]`))
       .concat(!!document.querySelector('[data-key="OSKSet_clear_log"]')),
   );
-  if (shots) await page.screenshot({ path: path.join(shots, "panel-v31.png") });
+  if (shots) await page.screenshot({ path: path.join(shots, "panel-v32.png") });
   check(
-    /^VaporType v31 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(vline ?? "") &&
+    /^VaporType v32 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(vline ?? "") &&
       toggles.every(Boolean),
     "settings panel: version line, private mode and typing log switches, clear log button",
     { vline, toggles },

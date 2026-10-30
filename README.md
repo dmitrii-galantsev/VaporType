@@ -61,6 +61,10 @@ middle one is blue, Space replaces your word with it. Backspace right after a co
 
 Pick a suggestion with a pad click, a touch, or the D-pad and A. It replaces the letters you typed and adds a space.
 
+To pick without taking a thumb off the letters, set Input → **LB / RB** to **Pick words**. RB then types the
+suggestion marked RB and LB the one marked LB: while you type a word, RB is the middle suggestion; after a space, RB is
+the best next word; right after an autocorrection, LB puts back what you typed.
+
 ## Moving the cursor
 
 ![Holding Space and sliding left moves the cursor back to "y|u", then tapping O fixes "yu" to "you"](docs/media/cursor.gif)
@@ -71,7 +75,8 @@ to type.
 ## Other keys
 
 - **Esc** is left of the number row; **Ctrl** and **Alt** are at the bottom left. Tap Ctrl or Alt once for the next
-  key only, twice to keep it on, a third time to turn it off. Hold LB for Ctrl, RB for Alt.
+  key only, twice to keep it on, a third time to turn it off. Hold LB for Ctrl, RB for Alt (Input → **LB / RB**:
+  Ctrl / Alt, Pick words or Off).
 - **Settings**: hold the emoji key (the one with the gear).
 
 ![The settings panel, Typing tab](docs/media/settings.png)

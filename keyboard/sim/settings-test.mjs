@@ -422,9 +422,9 @@ await scenario("swipe trail off: nothing is drawn during a swipe", async () => {
   return { ok: painted === 0, detail: `painted ${painted}` };
 });
 
-await scenario("LB / RB off: LB no longer holds Ctrl", async () => {
+await scenario("LB / RB: Off stops LB holding Ctrl, Pick words badges the chips, Ctrl / Alt holds Ctrl again", async () => {
   await openPanel();
-  await toggle("bumpers");
+  await choose("bumpers", "Off");
   await closePanel();
   await vgp("vgp_onbuttondown", 5);
   await settle(page);
@@ -432,14 +432,33 @@ await scenario("LB / RB off: LB no longer holds Ctrl", async () => {
   const sent = await page.evaluate(() => [...window.__oskTrackpadFix.sent.keys()]);
   await vgp("vgp_onbuttonup", 5);
   await openPanel();
-  await toggle("bumpers");
+  await choose("bumpers", "Pick words");
+  await closePanel();
+  const pick = await page.evaluate(() => window.__oskTrackpadFix.settings.bumpers);
+  await vgp("vgp_onbuttondown", 5);
+  await settle(page);
+  const ctrlPick = await kbEval((kb) => kb.state.toggleStates.Control);
+  await vgp("vgp_onbuttonup", 5);
+  await settle(page);
+  const badges = await page.evaluate(() =>
+    [0, 1, 2].map((i) => {
+      const e = document.querySelector(`[data-key="OSKSug_${i}"]`);
+      return e?.classList.contains("osk-sug-rb") ? "RB" : e?.classList.contains("osk-sug-lb") ? "LB" : "";
+    }),
+  );
+  await openPanel();
+  await choose("bumpers", "Ctrl / Alt");
   await closePanel();
   await vgp("vgp_onbuttondown", 5);
   await settle(page);
   const ctrlOn = await kbEval((kb) => kb.state.toggleStates.Control);
   await vgp("vgp_onbuttonup", 5);
   await settle(page);
-  return { ok: !(ctrl & 7) && sent.length === 0 && !!(ctrlOn & 7), detail: `off ctrl ${ctrl} sent ${sent} on ctrl ${ctrlOn}` };
+  const after = await page.evaluate(() => document.querySelectorAll(".osk-sug-rb,.osk-sug-lb").length);
+  return {
+    ok: !(ctrl & 7) && sent.length === 0 && pick === "pick" && !(ctrlPick & 7) && !!(ctrlOn & 7) && after === 0,
+    detail: `off ctrl ${ctrl} sent ${sent}; pick ${pick} ctrl ${ctrlPick} badges ${badges}; on ctrl ${ctrlOn}; badges after ${after}`,
+  };
 });
 
 await scenario("learned words list: shown with counts, tap forgets one", async () => {

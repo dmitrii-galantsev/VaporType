@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 31;
+  const VERSION = 32;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -107,7 +107,6 @@
     ["trail", "Swipe trail", "Draws the path while you swipe"],
     ["autoSpace", "Automatic word spacing", "Spaces a swiped word from the word before it, and a letter tapped after a swipe"],
     ["removeAutoSpace", "Remove auto space before punctuation", "Punctuation or Enter right after a picked word drops its space"],
-    ["bumpers", "LB / RB hold Ctrl / Alt", "Hold a bumper for a shortcut like Ctrl+C"],
     ["echo", "Show typed text", "What you type appears above the keys"],
     ["slideCursor", "Slide space bar to move cursor", "Hold the space bar and slide left or right"],
     ["enterCloses", "Enter closes keyboard", "Enter sends the text and hides the keyboard"],
@@ -149,6 +148,14 @@
         [2, "Balanced", "Up/down moves half as far as sideways"],
         [1, "Even", "Same distance up/down as sideways"],
         [3, "Stretched", "Pad height covers the keyboard (Steam)"],
+      ],
+    ],
+    bumpers: [
+      "LB / RB",
+      [
+        [true, "Ctrl / Alt", "Hold LB for Ctrl and RB for Alt, for shortcuts like Ctrl+C", "Ctrl / Alt"],
+        ["pick", "Pick words", "RB types the suggestion marked RB, LB the one marked LB", "Pick words"],
+        [false, "Off", "The bumpers do nothing on the letter keys"],
       ],
     ],
     theme: [
@@ -202,7 +209,7 @@
       [["Keys", ["c_mode", "t_swipe", "t_suggestions"]]],
       [["Spelling", ["t_autocorrect", "t_learn", "t_autoSpace", "t_removeAutoSpace"]]],
     ],
-    input: [[["Pads", ["c_reach", "c_oneAspect", "c_deadzone"]]], [["Buttons", ["t_slideCursor", "t_bumpers", "t_enterCloses"]]]],
+    input: [[["Pads", ["c_reach", "c_oneAspect", "c_deadzone"]]], [["Buttons", ["t_slideCursor", "c_bumpers", "t_enterCloses"]]]],
     look: [
       [["Style", ["c_theme", "c_blur", "t_trail", "t_echo", "reset_look"]]],
       [["Opacity", ["preview", "s_boardAlpha", "s_keyAlpha", "s_spaceAlpha", "s_stripAlpha"]]],
@@ -272,6 +279,8 @@
   const state = {
     version: VERSION,
     bumpers: {},
+    pickHeld: {},
+    pickVia: null,
     pending: {},
     blocked: (window.__oskBlocked ??= new Set()),
     swipeLog: (window.__oskSwipeLog ??= []),
@@ -291,6 +300,7 @@
   const T = {
     buf: "",
     taps: [],
+    fix: [],
     prev: null,
     lastOut: "unknown",
     auto: false,
@@ -907,6 +917,7 @@
     else if (SLIDERS[name]) for (const doc of documents()) applyLookVars(doc);
     if (name === "echo" || name === "suggestions" || name === "privateMode" || name === "mode" || name === "reach") scheduleEcho();
     if (name === "mode" || name === "oneAspect" || name === "reach") modeChanged();
+    if (name === "bumpers" || name === "suggestions") for (const kb of openKeyboards()) refreshBadges(kb);
     paintSetting(name);
     return true;
   }
@@ -1331,6 +1342,7 @@
     }
     T.buf = "";
     T.taps = [];
+    T.fix = [];
     T.fromSwipe = null;
     if (how === "end" || settings.privateMode) {
       T.prev = how === "end" ? null : T.prev;
@@ -1398,6 +1410,7 @@
     SW.recent = null;
     T.buf = "";
     T.taps = [];
+    T.fix = [];
     T.prev = null;
     T.fromSwipe = null;
     T.auto = false;
@@ -1477,6 +1490,7 @@
         outcome: swipe.rec.outcome?.startsWith("replaced:") ? "picked" : "kept",
       });
       if (rec.outcome === "picked") rec.decoded = swipe.rec.top?.[0]?.[0] ?? null;
+      if (swipe.via) rec.via = swipe.via;
     } else {
       const ac = T.autocorr && T.autocorr.to === w ? T.autocorr : null;
       const pk = T.picked;
@@ -1487,6 +1501,8 @@
         top: (pk?.sugs ?? T.sugs).filter(Boolean).map((x) => x.word),
         outcome: ac ? "autocorrected" : pk ? "picked" : "kept",
       });
+      if (T.fix.length) rec.erased = T.fix.slice();
+      if (pk && state.pickVia) rec.via = state.pickVia;
     }
     logStage(rec);
   }
@@ -1551,10 +1567,16 @@
     T.mode = mode;
     T.current = current;
     const labels = items.map((x) => x?.label ?? x?.word ?? "");
-    const same = labels.length === T.labels.length && labels.every((l, i) => l === T.labels[i]) && T.renderedCurrent === current;
+    const badges = `${bumperSlot("R")},${bumperSlot("L")}`;
+    const same =
+      labels.length === T.labels.length &&
+      labels.every((l, i) => l === T.labels[i]) &&
+      T.renderedCurrent === current &&
+      T.renderedBadges === badges;
     T.labels = labels;
     if (same || !kb) return;
     T.renderedCurrent = current;
+    T.renderedBadges = badges;
     try {
       if (writeLabels(kb)) markCurrent(kb);
       else kb.forceUpdate(() => markCurrent(kb));
@@ -1587,7 +1609,44 @@
       const el = doc.querySelector(`[data-key="${SUG}${i}"]`);
       el?.classList.toggle("osk-sug-current", i === T.current);
       el?.classList.toggle("osk-sug-note", !!T.sugs[i]?.note);
+      el?.classList.toggle("osk-sug-rb", i === bumperSlot("R"));
+      el?.classList.toggle("osk-sug-lb", i === bumperSlot("L"));
     }
+  }
+
+  function refreshBadges(kb) {
+    T.renderedBadges = `${bumperSlot("R")},${bumperSlot("L")}`;
+    markCurrent(kb);
+  }
+
+  const PICK_SLOTS = { complete: [1, 2], predict: [1, 0], swipe: [0, 2] };
+
+  function bumperSlot(side) {
+    if (settings.bumpers !== "pick" || !settings.suggestions || !layoutSupported()) return -1;
+    const slots = PICK_SLOTS[T.mode];
+    if (!slots) return -1;
+    const i = slots[side === "R" ? 0 : 1];
+    const item = T.sugs[i];
+    return item?.word && !item.inert && !item.note && !item.literal && !item.add ? i : -1;
+  }
+
+  function pickByBumper(kb, side) {
+    if (T.at && performance.now() - T.at > STALE_MS && (T.buf || T.prev || T.fromSwipe || T.auto)) {
+      resetTracker();
+      refreshSuggestions(kb);
+      return false;
+    }
+    const i = bumperSlot(side);
+    if (i < 0) return false;
+    if (TIP.el) hideTip();
+    pressFlash("B" + side, kb.m_keyboardDiv?.querySelector(`[data-key="${SUG}${i}"]`));
+    state.pickVia = side === "R" ? "RB" : "LB";
+    try {
+      pickSuggestion(kb, i);
+    } finally {
+      state.pickVia = null;
+    }
+    return true;
   }
 
   function takeTouchTap() {
@@ -1686,6 +1745,7 @@
       sendText(kb, text);
       T.fromSwipe.text = text;
       T.fromSwipe.picked = true;
+      if (state.pickVia) T.fromSwipe.via = state.pickVia;
       if (T.fromSwipe.rec) T.fromSwipe.rec.outcome = `replaced:${text}`;
       T.buf = text;
       T.lastOut = "word";
@@ -1710,6 +1770,7 @@
       T.prev = T.buf;
       T.buf = "";
       T.taps = [];
+      T.fix = [];
       T.lastOut = "space";
       T.auto = true;
       refreshSuggestions(kb);
@@ -1818,6 +1879,7 @@
     }
     T.buf = "";
     T.taps = [];
+    T.fix = [];
     T.fromSwipe = null;
     T.lastOut = f.prefix ? "word" : "unknown";
     refreshSuggestions(kb);
@@ -1869,6 +1931,7 @@
     } else if (key === "Backspace") {
       T.fromSwipe = null;
       if (T.buf) {
+        if (T.fix.length < 24) T.fix.push({ c: T.buf.slice(-1), ...(T.taps[T.buf.length - 1] ?? {}) });
         T.buf = T.buf.slice(0, -1);
         T.taps = T.taps.slice(0, T.buf.length);
         T.lastOut = T.buf ? "word" : "unknown";
@@ -4518,7 +4581,7 @@ ${V} [data-key=" "] > ${KK},${V} [data-key=" "]::after{text-shadow:0 1px 3px rgb
 ${SL && t.sub ? `${V} ${SL}{color:${t.sub} !important}\n` : ""}`;
     for (const [k, icon] of Object.entries(ICONS))
       css += `${V} [data-key="${k}"] > ${KK} > span{font-size:0 !important}\n${V} [data-key="${k}"] > ${KK} > span::after{content:"${icon}";font-size:22px;line-height:1}\n`;
-    if (settings.bumpers)
+    if (settings.bumpers === true)
       css += `${V} [data-key="Control"]::after,${V} [data-key="Alt"]::after{position:absolute;top:3px;right:5px;padding:0 3px;border-radius:3px;background:#d6dce5;color:#11151b;font:700 10px/13px "Motiva Sans",Arial,Helvetica,sans-serif;pointer-events:none}\n${V} [data-key="Control"]::after{content:"LB"}\n${V} [data-key="Alt"]::after{content:"RB"}\n`;
     const S = `.${C.Keyboard} [data-key^="${SUG}"] > ${KK}`;
     css += `${S}{box-sizing:border-box;border:${t.text ? 3 : 2}px solid transparent;background-clip:padding-box;border-radius:999px;background-color:${rgba([255, 255, 255], t.text ? 0.08 : 0.06)};color:${t.text ?? "#dcdedf"};transition:background-color 90ms ease-out}
@@ -4526,6 +4589,9 @@ ${S}:has(> span:empty){background-color:transparent;box-shadow:none}
 .${C.Keyboard} [data-key^="${SUG}"].osk-sug-current > ${KK}{background-color:${BLUE};color:#fff}
 .${C.Keyboard} [data-key^="${SUG}"] > ${KK}.${C.Focused}{background-color:${rgba(t.focus ?? [61, 68, 80], 1)}}
 .${C.Keyboard} [data-key^="${SUG}"].osk-press > ${KK},.${C.Keyboard} [data-key^="${SUG}"] > ${KK}.${C.Touched}{background-color:${BLUE};color:#fff}
+.${C.Keyboard} [data-key^="${SUG}"]:is(.osk-sug-rb,.osk-sug-lb)::after{position:absolute;top:50%;right:12px;transform:translateY(-50%);padding:0 3px;border-radius:3px;background:#d6dce5;color:#11151b;font:700 10px/13px "Motiva Sans",Arial,Helvetica,sans-serif;pointer-events:none}
+.${C.Keyboard} [data-key^="${SUG}"].osk-sug-rb::after{content:"RB"}
+.${C.Keyboard} [data-key^="${SUG}"].osk-sug-lb::after{content:"LB"}
 `;
     css += echoCss(C, t);
     return css;
@@ -4870,6 +4936,8 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     const down = e.type === "vgp_onbuttondown";
     const kb = findKeyboard(doc) ?? (!down ? state.bumperKb : null);
     if (!down) {
+      const picked = !!state.pickHeld[button];
+      delete state.pickHeld[button];
       const wasHeld = !!state.bumpers[which];
       state.bumpers[which] = false;
       if (kb && (kb.state?.toggleStates?.[which] ?? 0) & HELD) {
@@ -4878,13 +4946,34 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
           () => syncHeld(),
         );
       }
-      if (wasHeld) {
+      if (wasHeld || picked) {
         e.stopImmediatePropagation();
         e.preventDefault();
       }
       return;
     }
-    if (!settings.bumpers || P.open || !kb || !isOpen(kb) || (kb.state.layoutState !== 0 && kb.state.layoutState !== 1) || isImeLayout())
+    if (settings.bumpers === "pick") {
+      if (P.open || !kb || !isOpen(kb) || (kb.state.layoutState !== 0 && kb.state.layoutState !== 1) || !layoutSupported()) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      state.pickHeld[button] = true;
+      if (e.detail?.is_repeat) return;
+      try {
+        settleSwipe(kb);
+        pickByBumper(kb, button === BUMPER_RIGHT ? "R" : "L");
+      } catch (err) {
+        note(err);
+      }
+      return;
+    }
+    if (
+      settings.bumpers !== true ||
+      P.open ||
+      !kb ||
+      !isOpen(kb) ||
+      (kb.state.layoutState !== 0 && kb.state.layoutState !== 1) ||
+      isImeLayout()
+    )
       return;
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -5141,6 +5230,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
 
   function dropHolds(kbs) {
     state.bumpers = {};
+    state.pickHeld = {};
     P.held.clear();
     dropHeld(kbs);
     const kb = kbs[0];

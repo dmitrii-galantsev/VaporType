@@ -4,7 +4,7 @@ What `keyboard/src/` does inside Steam, the injector API and the simulator. User
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
 The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v31) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
+`osk` names. `patch.js` (v32) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
 `TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
 
 - **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
@@ -189,7 +189,8 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   autocorrect the left chip is "↶ dont": picking it puts the typed word back with its space (Backspace still does
   too). Holding a chip blocks the word and the chip reads "blocked: word · tap to undo" for 3 s. After a space they
   offer next words learned from your own typing. Backspace right after a swipe deletes the whole
-  word and its space.
+  word and its space. With "LB / RB" set to Pick words the bumpers pick chips without moving a thumb off the letters
+  (below).
 - **Learning.** Words you finish with space, punctuation or the next swipe are counted: known words get more
   likely. A word ended by Enter or by closing the keyboard is never learned (no word, phrase or pair counts), so a
   password typed and submitted leaves nothing behind. A word not in the dictionary is learned the second time it is typed by
@@ -234,11 +235,22 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   Steam's own `Control` / `Alt` toggle states, which the keyboard already had but ignored on output: tap is
   one-shot (blue label), double tap locks (blue key), a third tap turns it off, like Shift. Holding the key on
   the touchscreen also works.
-- **LB holds Ctrl, RB holds Alt** while the keyboard shows letters (left trigger already holds Shift). The
-  bumpers only drive IME candidate paging, unused in Latin layouts; in the emoji layouts they still switch
-  categories. Closing the keyboard forgets a bumper still held (its release may never reach the keyboard) and
-  strips the held bit from Ctrl / Alt, so a reopened keyboard types plain keys; it also drops a pad hold on a
-  suggestion chip or the emoji key, so the next press on that pad types.
+- **LB / RB** (setting "LB / RB", Input tab: Ctrl / Alt default, Pick words, Off). The bumpers only drive IME
+  candidate paging in Steam's keyboard, unused in Latin layouts; in the emoji layouts they still switch categories.
+  - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (left trigger already holds Shift).
+    Closing the keyboard forgets a bumper still held (its release may never reach the keyboard) and strips the held
+    bit from Ctrl / Alt, so a reopened keyboard types plain keys; it also drops a pad hold on a suggestion chip or the
+    emoji key, so the next press on that pad types.
+  - Pick words: a bumper press picks a suggestion chip exactly as a click on it would (`pickByBumper`), so both
+    thumbs stay on the letters and an index finger picks. RB takes the best chip and LB the other one
+    (`PICK_SLOTS`): while tapping a word RB is the middle chip and LB the right one; after a space RB is the middle
+    prediction and LB the left one; after a swipe RB is the left alternative and LB the right one, since the middle
+    chip is the swiped word; right after an autocorrect LB is the "↶" undo chip. The chips they would pick carry RB
+    and LB badges (`osk-sug-rb`, `osk-sug-lb`), never on the literal, "+ add" or a notice; with no badge the press
+    does nothing. A swipe still being decoded is typed first (`settleSwipe`). The press and its release are kept
+    from Steam, held repeats are ignored, and nothing is picked from a tracker gone stale (30 s), which is reset
+    instead. Needs the suggestion row. Motivation and the measurement: [BAKEOFFS.md](BAKEOFFS.md#typing-log-review-2026-10-30).
+  - Off: the bumpers do nothing on the letters.
 - **Output.** While Ctrl or Alt is active, or for Esc, the key goes out as real key events through
   `SteamClient.Input.ControllerKeyboardSetKeyState(EHIDKeyboardKey, down)`, the same call Steam's Paste key
   uses (LControl 103, V 25). Keys 0-99 are USB HID usages; modifiers are LAlt 100, LShift 101, LWin 102,
@@ -280,7 +292,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   | tab | left column | right column |
   |---|---|---|
   | Typing | Keys: Typing mode (Standard / Big keys), Swipe typing, Suggestion row | Spelling: Autocorrect, Learn new words, Automatic word spacing, Remove auto space before punctuation |
-  | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) | Buttons: Slide space bar to move cursor, LB / RB hold Ctrl / Alt, Enter closes keyboard |
+  | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) | Buttons: Slide space bar to move cursor, LB / RB (Ctrl / Alt / Pick words / Off), Enter closes keyboard |
   | Look | Style: Theme (Modern / Steam / OLED), Glass (Off / Light / Strong), Swipe trail, Show typed text, Reset look | Opacity: the live preview, Keyboard background, Keys, Space bar, Top strip |
   | Words | List (Learned (n) / Blocked (n)) across both columns, then 12 words a page, six down each column, with their count | |
   | System | Privacy: Private mode, Keep typing log, Clear typing log, Forget everything | Controls: a help card for the pads and buttons, the version line |
@@ -397,7 +409,9 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Typing log** (setting "Keep typing log", off in code). Per finished word: the swipe trace (points, pad tags,
   times) or the tap positions, the decoder's or suggestion row's top candidates, the typed and the committed text,
   and the outcome: kept, picked from the row, autocorrected, autocorrect undone, or deleted with Backspace (then
-  with the word typed next, the intended word). `env` records carry the versions and key settings and `geo` records
+  with the word typed next, the intended word). A tapped word also carries `erased`, the letters Backspace took out
+  of it before it was finished (each with its tap position, at most 24), and a pick made with a bumper carries `via`
+  ("LB" or "RB"). `env` records carry the versions and key settings and `geo` records
   the key geometry whenever they change. Same privacy rule as learning: only words ended by space, punctuation or
   the next swipe are logged (not words ended by Enter or closing). The host appends to
   `typing-log.jsonl` (`~/homebrew/data/vaportype/` with the plugin, beside `user-words.json` with `inject.mjs`;
@@ -532,7 +546,7 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   corpus plus 12 short words at 6, 10 and 16 keys/s and prints JSON (`STOCK=1` skips the patch, `PATCH_SRC=<file>`
   tests another patch.js, `DEADZONE=80|100|130` picks a preset).
 - `node keyboard/sim/settings-test.mjs`: the settings panel: emoji tap vs hold by pad, touch and A, pad
-  clicks on the panel not typing, B and ✕, D-pad focus, each switch's effect, the suggestion row removed
+  clicks on the panel not typing, B and ✕, D-pad focus, each switch's effect, the LB / RB choice (Off: LB holds no Ctrl; Pick words: no Ctrl either; Ctrl / Alt: LB holds Ctrl again, no chip badges left), the suggestion row removed
   with keycodes still aligned, the Pad reach segments (75 widens the pointer areas once the panel closes, an invalid
   value is refused; Full-width pad up/down shown only for Whole and Right pad only), the Words lists (counts, tap to forget with the undo offer, Blocked, the ‹ › pager over every learned word),
   Forget everything, closing with the keyboard, and settings coming back from the `takeUserWords()` JSON after a
@@ -597,7 +611,9 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   3:1) with the top and bottom rows reachable, Enter with Steam's dismiss flag set (setting off, then turned on: the
   flag comes back), space by pad and touch, cursor slides by pad (both ways, reversal, Right pad only) and touch, the word tracker reset, a fast
   8-key slide that must drain within 160 ms of the last move, the setting off, rolled space then letter, and the
-  "lpl" suggestion row and picks. Pad reach 55, 75 and 100 in Standard
+  "lpl" suggestion row and picks; Pick words: the RB / LB badges on "lpl", RB typing the middle chip (logged with
+  `via: "RB"`, no Ctrl or Alt held), RB and LB after a space typing the middle and left predictions, LB typing the
+  right chip, and after Enter no badge and nothing typed. Pad reach 55, 75 and 100 in Standard
   and Big letter keys: which keys each pad reaches at its far edge through the raw pad mapping.
 - `node keyboard/sim/privacy-test.mjs` (pages run one after another; `PARALLEL=1` runs them together): private mode boundary
   ("hello" in private, "world" after: no pair, nothing logged or kept), Enter- and
@@ -622,7 +638,7 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   badge and the Look tab's four sliders and Glass choice with no old opacity setting.
 - `node keyboard/sim/robust-test.mjs` (four pages in one browser, in parallel): `ctx.taps` from pad and touch taps reaching
   `suggest`/`correct`; typing-log records (kept, autocorrect undone, picked, swipe deleted with the next word, an
-  Enter-ended word left out), versions, settings, geometry, traces and tap positions; log acknowledgement;
+  Enter-ended word left out), versions, settings, geometry, traces, tap positions and erased letters; log acknowledgement;
   private mode (no autocorrect, learning or log; the field's text) and its hold toggle by touch; the
   version line and new panel controls; Clear typing log and forgetAll requests; closing the keyboard drops queued
   output (hidden right after the first character goes out, so exactly 1 of 26 arrives); `stop()` cancels output, restores the pads' properties and releases Ctrl last; preflight with a missing
@@ -643,4 +659,6 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   `geometry.json` from `keyboard/sim/dump-keys.mjs`), `bench-sentences.mjs` (`corpora/chat-corpus.txt` with context: swipe,
   phrases, autocorrect false and true fixes, next-word prediction), `bench-onepad.mjs`, `bench-modes.mjs`
   (pad taps with noise in mm on the Standard and Big letter keys maps, typed literally and through autocorrect). Results and the decisions taken from them are in
-  [BAKEOFFS.md](BAKEOFFS.md); the traces and taps are simulated, not recorded on the deck.
+  [BAKEOFFS.md](BAKEOFFS.md); the traces and taps are simulated, not recorded on the deck. `bench-log.mjs` is the
+  exception: it replays a real typing log (`OSK_TYPING_LOG`, `OSK_LOG_SINCE`, `OSK_USER_WORDS`) through the suggestion
+  row and autocorrect and prints what picking and autocorrect saved or would have saved.
