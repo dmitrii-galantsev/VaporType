@@ -27,15 +27,17 @@ in [docs/KEYBOARD.md](docs/KEYBOARD.md).
 
 ## Setup
 
-Node 20+ (CI uses 24), pnpm 9 (`corepack enable`, or `npx pnpm@9` in place of `pnpm`), Python 3.10+ and
-[Ruff](https://docs.astral.sh/ruff/) (`pip install ruff`):
+Node 20+ (CI uses 24), pnpm 9.15.9 (the `packageManager` in `package.json`), Python 3.10+ and
+[Ruff](https://docs.astral.sh/ruff/) (`pip install ruff`). Without pnpm on the PATH, `corepack enable` provides it on Node
+24 and older (Node 25 no longer ships corepack), or write `npx -y pnpm@9.15.9` in place of `pnpm` in every command
+below; the scripts find it either way.
 
 ```sh
 pnpm i
 pnpm run lint            # ESLint, tsc --noEmit, ruff check
 pnpm run format          # Prettier and ruff format; format:check only checks
 pnpm test                # build, engine gates, backend test, provenance, packaging test, privacy scan
-pnpm run test:sim        # simulator suites + plugin test; records test-record.json (needs Steam's UI files)
+pnpm run test:sim        # simulator suites, plugin test, backend test; records test-record.json (needs Steam's UI files)
 pnpm run package         # -> out/VaporType.zip, only from files test:sim recorded
 ```
 
@@ -46,8 +48,8 @@ docs are wrapped by hand at about 120 columns and their wide tables would be pad
 
 ## Release
 
-`test:sim` runs `keyboard/sim/test-all.sh` (every simulator suite and the engine gates), `test/backend-test.py` and
-`test/plugin-sim.mjs`, then writes the hashes of every shipped file and its sources to `test-record.json`. Commit that
+`test:sim` runs `keyboard/sim/test-all.sh` (every simulator suite, `test/plugin-sim.mjs` and the engine gates, in
+parallel) and `test/backend-test.py`, then writes the hashes of every shipped file and its sources to `test-record.json`. Commit that
 file with the change. `package.sh` zips an explicit allowlist (`PACKAGE` in `scripts/provenance.mjs`) and refuses
 unless every listed file, its sources and nothing else in `dist/` match `test-record.json`; the record ships in the zip.
 
@@ -66,13 +68,14 @@ The simulator loads Steam's own keyboard code, which is not redistributable, so 
 Enable SSH on the Deck (set a password with `passwd`, then `sudo systemctl start sshd`) and run:
 
 ```sh
-sh scripts/fetch-steamui.sh deck@<your-deck-address>     # -> .steamui/ (gitignored)
-pnpm run test:sim                         # everything, in parallel
-node keyboard/sim/test.mjs                # output path: rolled typing, Esc/Ctrl/Alt, chords, stop and re-inject
-node keyboard/sim/swipe-test.mjs          # swipe typing end to end
-node test/plugin-sim.mjs                  # the plugin end to end: load, save, disable, restart, forget, unload, call counts
-node keyboard/sim/media.mjs               # re-record the README GIFs and pictures into docs/media (needs ffmpeg);
-                                          # one of them: node keyboard/sim/media.mjs docs/media swipe
+sh scripts/fetch-steamui.sh deck@<your-deck-address>   # -> .steamui/ (gitignored)
+pnpm run test:sim                    # everything, in parallel; a failing run keeps its logs
+bash keyboard/sim/test-all.sh input-test swipe-test     # only these suites; add plugin-sim after pnpm run build
+node keyboard/sim/test.mjs           # output path: rolled typing, Esc/Ctrl/Win/Alt, chords, stop and re-inject
+node keyboard/sim/swipe-test.mjs     # swipe typing end to end
+node test/plugin-sim.mjs             # the plugin end to end: load, save, disable, restart, forget, unload, call counts
+node keyboard/sim/media.mjs          # re-record the README GIFs and pictures into docs/media (needs ffmpeg);
+                                     # one of them: node keyboard/sim/media.mjs docs/media swipe
 ```
 
 `fetch-steamui.sh` takes any ssh destination and, optionally, the remote steamui folder (default

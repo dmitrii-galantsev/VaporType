@@ -4,7 +4,7 @@ What `keyboard/src/` does inside Steam, the injector API and the simulator. User
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
 The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v32) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
+`osk` names. `patch.js` (v33) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
 `TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
 
 - **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
@@ -485,10 +485,11 @@ and Steam's `VirtualKeyboardContainer` renders with a real `VirtualKeyboardManag
 that records `ControllerKeyboardSendText` and `ControllerKeyboardSetKeyState`. Pads, triggers and bumpers are
 driven with the same `vgp_onbuttondown/up` events Steam dispatches.
 
-`keyboard/sim/test-all.sh` (`pnpm run test:sim` runs it with the plugin tests) runs every suite in parallel (one
-Chromium each, `swipe-test` twice, plus `keyboard/bench/gates.mjs`), then `perf-test` alone, since its millisecond
-budgets do not hold with eight throttled Chromiums beside it, and prints pass/fail counts and seconds per suite; logs go to `$OUT` or a temp
-dir. The suites wait on conditions, not fixed sleeps: `run.mjs` exports `inject(page, src)` (waits until the
+`keyboard/sim/test-all.sh` runs every suite in parallel (one Chromium each, `swipe-test` twice, plus
+`keyboard/bench/gates.mjs`, and `test/plugin-sim.mjs` with `PLUGIN=1`, as `pnpm run test:sim` sets it), the two longest
+(`twopad-test`, `settings-test`) first, then `perf-test` alone, since its millisecond budgets do not hold with eight
+throttled Chromiums beside it, and prints pass/fail counts and seconds per suite; logs go to `$OUT` or a temp dir.
+Suite names as arguments run only those (`bash keyboard/sim/test-all.sh menu-test perf-test`). The suites wait on conditions, not fixed sleeps: `run.mjs` exports `inject(page, src)` (waits until the
 patch reports `keyboard=patched` or unsupported), `settle(page)` (until `__oskTrackpadFix.idle()`, no new
 output for 40 ms and a frame; `join: false` skips the 220 ms swipe-join window), and `waitKeyboard(page)` (after
 reopening: the keys exist and the space bar stopped moving, since Steam slides the keyboard in). Only real holds
