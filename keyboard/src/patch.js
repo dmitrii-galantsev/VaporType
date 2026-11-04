@@ -248,8 +248,14 @@
     { key: "Meta", label: "Win", type: META, strLocDescription: "#KeyboardKey_LWin" },
     { key: "Alt", label: "#Key_Alt", type: META, strLocDescription: "#KeyboardKey_LAlt" },
   ];
+  const HELD_MODS = [
+    ["Control", K_LCTRL],
+    ["Meta", K_LWIN],
+    ["Alt", K_LALT],
+  ];
   const SUG_KEYS = [0, 1, 2].map((i) => ({ key: SUG + i, label: () => T.labels[i] ?? "", type: META }));
-  const TOGGLES = new Set(["Shift", "CapsLock", "Control", "Meta", "Alt", "AltGr"]);
+  const ONE_SHOTS = ["Shift", ...HELD_MODS.map(([name]) => name), "AltGr"];
+  const TOGGLES = new Set(["CapsLock", ...ONE_SHOTS]);
 
   const HID = {
     Enter: [40],
@@ -277,6 +283,7 @@
     const t = v & 3;
     return (t === 1 ? 0 : t) | (v & HELD);
   };
+  const modifierOn = (ts) => HELD_MODS.some(([name]) => active(ts[name])) || active(ts.AltGr);
 
   const state = {
     version: VERSION,
@@ -762,18 +769,10 @@
   }
 
   function syncHeld(kbs = openKeyboards()) {
-    let ctrl = false,
-      win = false,
-      alt = false;
-    for (const kb of kbs) {
-      const ts = kb.state?.toggleStates ?? {};
-      ctrl ||= active(ts.Control);
-      win ||= active(ts.Meta);
-      alt ||= active(ts.Alt);
+    for (const [name, code] of HELD_MODS) {
+      const on = kbs.some((kb) => active(kb.state?.toggleStates?.[name]));
+      holdKey(code, on);
     }
-    holdKey(K_LCTRL, ctrl);
-    holdKey(K_LWIN, win);
-    holdKey(K_LALT, alt);
   }
 
   function holdKey(code, down) {
@@ -791,10 +790,8 @@
   }
 
   function plainOut() {
-    if (!state.sent.get(K_LCTRL) && !state.sent.get(K_LWIN) && !state.sent.get(K_LALT)) return;
-    setKey(K_LCTRL, false);
-    setKey(K_LWIN, false);
-    setKey(K_LALT, false);
+    if (!HELD_MODS.some(([, code]) => state.sent.get(code))) return;
+    for (const [, code] of HELD_MODS) setKey(code, false);
     holdLater();
   }
 
@@ -808,11 +805,7 @@
         ...s,
         toggleStates: {
           ...s.toggleStates,
-          Shift: releaseOneShot(s.toggleStates.Shift),
-          Control: releaseOneShot(s.toggleStates.Control),
-          Meta: releaseOneShot(s.toggleStates.Meta),
-          Alt: releaseOneShot(s.toggleStates.Alt),
-          AltGr: releaseOneShot(s.toggleStates.AltGr),
+          ...Object.fromEntries(ONE_SHOTS.map((k) => [k, releaseOneShot(s.toggleStates[k])])),
         },
       }),
       () => syncHeld(),
@@ -821,13 +814,11 @@
 
   function sendChord(kb, key, shifted) {
     const ts = kb.state?.toggleStates ?? {};
-    const ctrl = active(ts.Control),
-      win = active(ts.Meta),
-      alt = active(ts.Alt),
-      shift = active(ts.Shift);
+    const held = HELD_MODS.map(([name, code]) => [code, active(ts[name])]);
+    const shift = active(ts.Shift);
     const isEsc = key === "Escape";
     const shiftNav = shift && key === "Tab";
-    if (!isEsc && !ctrl && !win && !alt && !shiftNav) return false;
+    if (!isEsc && !held.some(([, on]) => on) && !shiftNav) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const hid = HID[key];
     if (!hid) return false;
@@ -835,9 +826,7 @@
     const needShift = hid[1] === true || (!shifted && (letter || key.length > 1 || key === " ") && shift);
     const shiftCode = needShift ? (key === "Tab" ? K_RSHIFT : K_LSHIFT) : 0;
     emit(() => {
-      setKey(K_LCTRL, ctrl);
-      setKey(K_LWIN, win);
-      setKey(K_LALT, alt);
+      for (const [code, on] of held) setKey(code, on);
       tapKey(hid[0], shiftCode);
       syncHeld();
       echoReset(true);
@@ -1370,7 +1359,9 @@
       let phrase = false;
       try {
         phrase = !!eng.info?.(w)?.phrase;
-      } catch (e) {}
+      } catch (e) {
+        note(e);
+      }
       const parts = phrase ? [w] : w.split(" ");
       try {
         for (const part of parts) {
@@ -1391,7 +1382,9 @@
       let inf = null;
       try {
         inf = eng.info?.(w) ?? null;
-      } catch (e) {}
+      } catch (e) {
+        note(e);
+      }
       if (inf && !(inf.c > 0) && (inf.z ?? 0) < LEARN_SWIPE_ZIPF) {
         T.prev = w;
         return;
@@ -2070,7 +2063,7 @@
     if (!state.swipeOn || !kb || !isOpen(kb)) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const ts = kb.state.toggleStates ?? {};
-    if (active(ts.Control) || active(ts.Meta) || active(ts.Alt) || active(ts.AltGr)) return false;
+    if (modifierOn(ts)) return false;
     if (!layoutSupported()) return false;
     return !!getEngine();
   }
@@ -2710,7 +2703,7 @@
     if (!settings.slideCursor || P.open || !kb || !isOpen(kb)) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const ts = kb.state.toggleStates ?? {};
-    return !(active(ts.Control) || active(ts.Meta) || active(ts.Alt) || active(ts.AltGr));
+    return !modifierOn(ts);
   }
 
   function keyWidth(kb) {
@@ -4800,10 +4793,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
               }
             }
             if (!SW.typing) SW.recent = null;
-            let ch = key;
-            try {
-              ch = typedChar(this, key);
-            } catch (e) {}
+            const ch = typedChar(this, key);
             const autoc = T.autocorr;
             T.autocorr = null;
             let corrected = false;
