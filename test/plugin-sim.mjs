@@ -593,7 +593,9 @@ if (faultOnly) {
 
   const WORDS = ["hi", "ok", "so", "we", "go", "up", "me", "it", "is", "do"];
   const quoted = new RegExp(`"(${WORDS.join("|")})"`);
-  const callsSince = (t0) => page.evaluate((t0) => window.__deckyCalls.filter((c) => c.t >= t0), t0);
+  const mark = () => page.evaluate(() => ({ n: window.__deckyCalls.length, t: Date.now() }));
+  const callsSince = (m) => page.evaluate((n) => window.__deckyCalls.slice(n), m.n);
+  const calledSince = (m, name, ms) => waitFor((n, name) => window.__deckyCalls.slice(n).some((c) => c.name === name), ms, m.n, name);
   const typeWords = async (n) => {
     for (let i = 0; i < n; i++) for (const k of [...WORDS[i % WORDS.length], " "]) await padTap(k);
   };
@@ -612,19 +614,20 @@ if (faultOnly) {
   await waitFor(() => !window.__oskTrackpadFix.panel?.open && window.__oskTrackpadFix.effective("learn") === true, 3000);
   await page.evaluate(() => VaporType.syncNow());
   const logBefore = fs.existsSync(logFile) ? fs.statSync(logFile).size : 0;
+  const m50 = await mark();
   const t50 = Date.now();
   await typeWords(50);
   const typedFor = Date.now() - t50;
-  const whileOpen = await callsSince(t50);
+  const whileOpen = await callsSince(m50);
   await hide();
-  const flushed = await waitFor((t0) => window.__deckyCalls.some((c) => c.t >= t0 && c.name === "save_user_words"), 9000, t50);
-  const all50 = await callsSince(t50);
+  const flushed = await calledSince(m50, "save_user_words", 9000);
+  const all50 = await callsSince(m50);
   const saves50 = all50.filter((c) => c.name === "save_user_words");
   const words50 = readJson(wordsFile)?.words ?? {};
   check(
     "50 typed words with the keyboard open make no save call; hiding the keyboard flushes once",
     typedFor < 55000 && whileOpen.filter((c) => c.name === "save_user_words").length === 0 && !!flushed && saves50.length <= 2,
-    `typed in ${typedFor} ms, ${whileOpen.length} calls while open, ${saves50.length} saves, ${saves50.reduce((a, c) => a + c.bytes, 0)} bytes ${all50.map((c) => `${c.name}@${c.t - t50}:${c.bytes}`).join(" ")}`,
+    `typed in ${typedFor} ms, ${whileOpen.length} calls while open, ${saves50.length} saves, ${saves50.reduce((a, c) => a + c.bytes, 0)} bytes ${all50.map((c) => `${c.name}@${c.t - m50.t}:${c.bytes}`).join(" ")}`,
   );
   check(
     "the flush on hide writes the learned words",
@@ -644,12 +647,12 @@ if (faultOnly) {
   await show();
   await page.evaluate(() => window.__oskTrackpadFix.setSetting("typingLog", true));
   await page.evaluate(() => VaporType.syncNow());
-  const t10 = Date.now();
+  const m10 = await mark();
   await typeWords(10);
   await hide();
-  await waitFor((t0) => window.__deckyCalls.some((c) => c.t >= t0 && c.name === "append_typing_log"), 9000, t10);
+  await calledSince(m10, "append_typing_log", 9000);
   await sleep(5500);
-  const all10 = await callsSince(t10);
+  const all10 = await callsSince(m10);
   const appends = all10.filter((c) => c.name === "append_typing_log");
   const logText = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
   check(
@@ -665,10 +668,10 @@ if (faultOnly) {
 
   await show();
   await page.evaluate(() => VaporType.syncNow());
-  const tu = Date.now();
+  const mu = await mark();
   await typeWords(3);
   await page.evaluate(() => VaporType.shutdown());
-  const unload = await waitFor((t0) => window.__deckyCalls.some((c) => c.t >= t0 && c.name === "save_user_words"), 5000, tu);
+  const unload = await calledSince(mu, "save_user_words", 5000);
   check("plugin unload flushes unsaved words", !!unload);
   const down = await running();
   check("plugin unload stops the patch", !down.patched && !down.esc, JSON.stringify(down));
