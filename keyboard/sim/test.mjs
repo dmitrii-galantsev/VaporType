@@ -238,6 +238,15 @@ if (JSON.stringify(added.sort()) !== JSON.stringify(["Alt", "Control", "Escape",
   failures++;
   results.push(`FAIL added keys ${JSON.stringify(added)}`);
 }
+const widths = await page.evaluate(() =>
+  Object.fromEntries(
+    ["Control", "Meta", "Alt", "a", " "].map((k) => [k, document.querySelector(`[data-key="${k}"]`)?.getBoundingClientRect().width ?? 0]),
+  ),
+);
+if (!["Control", "Meta", "Alt"].every((k) => Math.abs(widths[k] - widths.a) <= 3) || widths[" "] < 3.5 * widths.a) {
+  failures++;
+  results.push(`FAIL Ctrl / Win / Alt as wide as a letter key, space bar at least 3.5 letters: ${JSON.stringify(widths)}`);
+} else results.push(`PASS Ctrl / Win / Alt as wide as a letter key, space bar at least 3.5 letters: ${JSON.stringify(widths)}`);
 if (shots) await page.screenshot({ path: path.join(shots, "patched.png") });
 
 await scenario(

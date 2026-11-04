@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 33;
+  const VERSION = 34;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -4277,6 +4277,7 @@
 .osk-badge[hidden]{display:none !important}
 @keyframes osk-echo-blink{50%{opacity:0}}
 [data-key="${EMOJI}"],[data-key=" "],[data-key="Control"],[data-key="Alt"]{position:relative}
+[data-key="Control"],[data-key="Meta"],[data-key="Alt"]{width:6.45% !important}
 [data-key="${EMOJI}"]::after{content:"";position:absolute;top:2px;right:3px;width:18px;height:18px;border-radius:50%;background:${GEAR_LIGHT} no-repeat center/14px,#0e141b;pointer-events:none}
 .osk-gear{display:inline-block;width:1em;height:1em;vertical-align:-.12em;background:${GEAR} no-repeat center/contain}
 [data-key="${EMOJI}"].osk-holding::before{content:"";position:absolute;z-index:3;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;pointer-events:none;background:conic-gradient(#4aa8ff var(--osk-hold),rgba(255,255,255,.18) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));animation:osk-hold ${HOLD_MS}ms linear forwards}

@@ -4,7 +4,7 @@ What `keyboard/src/` does inside Steam, the injector API and the simulator. User
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
 The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v33) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
+`osk` names. `patch.js` (v34) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
 `TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
 
 - **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
@@ -236,7 +236,8 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   state the patch adds to the keyboard's `s_keyToggleData` (restored on stop): tap is one-shot (blue label), double
   tap locks (blue key), a third tap turns it off, like Shift. Holding the key on the touchscreen also works. Win is
   for Windows hosts over Moonlight (Win+Shift+S is a partial screenshot); Moonlight passes it on when it captures
-  system keyboard shortcuts.
+  system keyboard shortcuts. Ctrl, Win and Alt are as wide as a letter key (6.45 % of the row instead of Steam's
+  8.2 % for the keys around them), which leaves the space bar 240 of the 854 px keyboard instead of 196 px.
 - **LB / RB** (setting "LB / RB", Input tab: Ctrl / Alt default, Pick words, Off). The bumpers only drive IME
   candidate paging in Steam's keyboard, unused in Latin layouts; in the emoji layouts they still switch categories.
   - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (left trigger already holds Shift).

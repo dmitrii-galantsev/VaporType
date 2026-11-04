@@ -623,3 +623,21 @@ other one, and badges on the chips show which is which, so a pick costs one inde
 default, and a saved "off" stays Off. The log could not show how often a tap missed its key, because Backspace inside
 a word left no trace. Tapped words now carry `erased`, the letters Backspace removed with their tap positions, and
 bumper picks carry `via`, so the next review can measure tap misses and whether Pick words gets used.
+
+## Space bar width with the Win key (keyboard v34)
+
+The Win key (v33) took one more of Steam's 8.2 %-wide keys from the bottom row, and the space bar is the row's only
+flexible key, so it shrank to 196 px of the 854 px keyboard in the simulator (stock Steam: 414 px; with Ctrl and Alt
+only: 269 px). The space bar is also where a cursor slide starts. Measured with Ctrl, Win and Alt narrowed by CSS:
+
+| Ctrl / Win / Alt width | each key | space bar |
+|---|---|---|
+| 8.2 % (Steam's, v33) | 73 px | 196 px |
+| 6.75 % | 60 px | 233 px |
+| 6.45 % (about a letter key) | 58 px | 240 px |
+| 6.2 % | 56 px | 247 px |
+| 5.5 % | 50 px | 265 px |
+
+Decision: 6.45 %, the width of a letter key. The three keys stay as large as the letters a pad already aims at, the
+LB / RB badges still fit beside their labels, and the space bar gets back 44 px (22 %). Narrower keys would trade a
+key the size of a letter for a few more pixels of a bar that is already three letters wide.
