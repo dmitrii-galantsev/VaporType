@@ -1,7 +1,7 @@
 import path from "node:path";
 import puppeteer from "puppeteer-core";
 import { openSim, inject, settle, waitKeyboard } from "./run.mjs";
-import { readRuntime as read } from "../runtime.mjs";
+import { keyboardVersion, readRuntime as read } from "../runtime.mjs";
 import { makeCheck, pageHelpers, sleep } from "./helpers.mjs";
 
 const shots = process.env.SHOTS;
@@ -111,7 +111,7 @@ function helpers(page) {
 async function mainBlock() {
   const { page, errors, status } = await fresh();
   const h = helpers(page);
-  check(/^v33 layouts=\d+ keyboard=patched/.test(status) || /^v33 layouts=\d+ keyboard=waiting/.test(status), "patch loads", status);
+  check(new RegExp(`^v${keyboardVersion()} layouts=\\d+ keyboard=(patched|waiting)`).test(status), "patch loads", status);
 
   await h.F(() => {
     const eng = window.__oskEngine;
@@ -189,7 +189,7 @@ async function mainBlock() {
   const tapRec = recs.find((r) => r.type === "word" && r.kind === "tap" && r.committed === "pool");
   const swipeRec = recs.find((r) => r.kind === "swipe");
   check(
-    env?.versions?.keyboard === 33 &&
+    env?.versions?.keyboard === keyboardVersion() &&
       env.versions.engine > 0 &&
       env.versions.installed === "2026-10-23" &&
       env.settings?.mode &&
@@ -276,10 +276,11 @@ async function mainBlock() {
       .map((k) => !!document.querySelector(`[data-key="OSKSet_t_${k}"]`))
       .concat(!!document.querySelector('[data-key="OSKSet_clear_log"]')),
   );
-  if (shots) await page.screenshot({ path: path.join(shots, "panel-v33.png") });
+  if (shots) await page.screenshot({ path: path.join(shots, `panel-v${keyboardVersion()}.png`) });
   check(
-    /^VaporType v33 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(vline ?? "") &&
-      toggles.every(Boolean),
+    new RegExp(`^VaporType v${keyboardVersion()} · engine v\\d+ · words v\\d+ · pairs v\\d+ · modes v\\d+ · installed 2026-10-23$`).test(
+      vline ?? "",
+    ) && toggles.every(Boolean),
     "settings panel: version line, private mode and typing log switches, clear log button",
     { vline, toggles },
   );

@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer-core";
 import { openSim, inject, settle, waitKeyboard } from "./run.mjs";
-import { readRuntime as read } from "../runtime.mjs";
+import { keyboardVersion, readRuntime as read } from "../runtime.mjs";
 import { makeCheck, pageHelpers, sleep } from "./helpers.mjs";
 
 const PRELUDE = ["swipe/words.js", "swipe/lm.js", "swipe/engine.js", "modes.js"].map(read).join("\n;\n");
@@ -349,7 +349,9 @@ async function naming() {
     title: document.querySelector(".osk-set-title")?.textContent ?? null,
   }));
   check(
-    /^VaporType v33 · engine v\d+ · words v\d+ · pairs v\d+ · modes v\d+ · installed 2026-10-23$/.test(v.line ?? "") && v.title === null,
+    new RegExp(`^VaporType v${keyboardVersion()} · engine v\\d+ · words v\\d+ · pairs v\\d+ · modes v\\d+ · installed 2026-10-23$`).test(
+      v.line ?? "",
+    ) && v.title === null,
     "the panel says VaporType in the version line and has no wordmark",
     v,
   );

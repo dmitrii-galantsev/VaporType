@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RUNTIME } from "../keyboard/runtime.mjs";
+import { RUNTIME, keyboardVersion } from "../keyboard/runtime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RECORD = path.join(root, "test-record.json");
@@ -71,10 +71,9 @@ if (mode === "snapshot") {
   const before = JSON.parse(fs.readFileSync(arg, "utf8"));
   const after = snapshot();
   for (const f of Object.keys({ ...before, ...after })) if (before[f] !== after[f]) fail(`${f} changed while the tests ran; test again`);
-  const patch = fs.readFileSync(path.join(root, "keyboard", RUNTIME["patch.js"]), "utf8");
   const record = {
     tested: new Date().toISOString(),
-    keyboard: Number(/const VERSION = (\d+)/.exec(patch)?.[1] ?? 0),
+    keyboard: keyboardVersion(),
     tests: ["keyboard/sim/test-all.sh (simulator suites and engine gates)", "test/backend-test.py", "test/plugin-sim.mjs"],
     files: after,
   };

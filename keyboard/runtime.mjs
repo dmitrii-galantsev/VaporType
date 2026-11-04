@@ -19,6 +19,8 @@ export const sourceOf = (rel) => path.join(KEYBOARD_DIR, RUNTIME[rel] ?? INJECTO
 
 export const readRuntime = (rel) => fs.readFileSync(sourceOf(rel), "utf8");
 
+export const keyboardVersion = () => Number(/const VERSION = (\d+)/.exec(readRuntime("patch.js"))?.[1] ?? 0);
+
 export function assemble(dest, { injector = false } = {}) {
   const files = { ...RUNTIME, ...(injector ? INJECTOR : {}) };
   for (const [rel, src] of Object.entries(files)) {
