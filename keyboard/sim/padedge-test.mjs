@@ -153,6 +153,7 @@ const TOP_ROW = new Set(["Escape", ..."1234567890-=", "Backspace"]);
 const topKey = (k) => TOP_ROW.has(k) || /^OSKSug_\d$/.test(k ?? "");
 const BOTTOM_ROW = new Set([
   "Control",
+  "Meta",
   "Alt",
   "SwitchKeys_Steam",
   "SwitchKeys_Layout",

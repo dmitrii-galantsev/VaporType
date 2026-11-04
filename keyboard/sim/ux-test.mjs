@@ -201,7 +201,7 @@ check(
     !tip2.emoji &&
     !tipUnderPanel &&
     !panelInfo.foot &&
-    /^VaporType v32/.test(panelInfo.data) &&
+    /^VaporType v33/.test(panelInfo.data) &&
     /osk-set-disabled/.test(panelInfo.clear),
   "the tip uses the gear icon and closes when the panel opens; the version line sits in System, not the footer; Clear typing log is greyed out with the log off and empty",
   { tip2, tipUnderPanel, panelInfo },

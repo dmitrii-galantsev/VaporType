@@ -232,9 +232,9 @@ const top = await page.evaluate(() =>
   ),
 );
 results.push(`top row: ${top.join("  ")}`);
-const stock = before.filter((k) => !["Escape", "Control", "Alt"].includes(k) && !k.startsWith("OSKSug_"));
+const stock = before.filter((k) => !["Escape", "Control", "Meta", "Alt"].includes(k) && !k.startsWith("OSKSug_"));
 const added = after.filter((k) => !stock.includes(k));
-if (JSON.stringify(added.sort()) !== JSON.stringify(["Alt", "Control", "Escape", "OSKSug_0", "OSKSug_1", "OSKSug_2"])) {
+if (JSON.stringify(added.sort()) !== JSON.stringify(["Alt", "Control", "Escape", "Meta", "OSKSug_0", "OSKSug_1", "OSKSug_2"])) {
   failures++;
   results.push(`FAIL added keys ${JSON.stringify(added)}`);
 }
@@ -298,6 +298,31 @@ await scenario(
     await padPress("L", "Tab");
   },
   ["Alt+Tab"],
+);
+
+await scenario(
+  "Win then Shift then s (partial screenshot)",
+  async () => {
+    await padPress("L", "Meta");
+    await padPress("L", "Shift");
+    await padPress("L", "s");
+  },
+  ["Win+Shift+s"],
+);
+
+const tsAfterWin = await toggles();
+if (tsAfterWin.Meta !== 0) {
+  failures++;
+  results.push(`FAIL Meta not cleared after one-shot: ${tsAfterWin.Meta}`);
+}
+
+await scenario(
+  "Win (click) then s",
+  async () => {
+    await mouseClick("Meta");
+    await mouseClick("s");
+  },
+  ["Win+s"],
 );
 
 await scenario(

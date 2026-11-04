@@ -548,6 +548,7 @@ if (want("pads")) {
       const names = {
         " ": "space",
         Control: "Ctrl",
+        Meta: "Win",
         Alt: "Alt",
         Backspace: "⌫",
         Enter: "⏎",

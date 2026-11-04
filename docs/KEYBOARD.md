@@ -79,7 +79,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   `stripAlpha = max(90, opacity)`, so 80 % loads as 30 / 100 / 90 and the space bar takes the default 30. Only the
   default keyboard theme is restyled; a points-shop theme is left alone. One blue, `#0a74d6` (white text 4.69:1),
   fills the chip that space or punctuation will apply (autocorrect target) or the word just swiped, ON switches,
-  locked Shift/Caps/Ctrl/Alt and pressed keys; next-word predictions are never filled. Keys, chips and the typed-text
+  locked Shift/Caps/Ctrl/Win/Alt and pressed keys; next-word predictions are never filled. Keys, chips and the typed-text
   field carry no outline, ring or edge; modifier keys are only slightly darker than letters. Letter labels are 20 px,
   modifier labels 14 px,
   Backspace/Enter/Shift show ⌫ ⏎ ⇧ next to Steam's controller glyphs (X, R2, L2; the glyphs are Steam's
@@ -91,7 +91,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Typed text.** The suggestion row starts with a field showing the end of what this keyboard sent (the last 60
   characters, about 30 visible), with a caret, for when the keyboard covers the text box (Moonlight). It follows what goes out: taps, swiped words,
   suggestion picks, autocorrect, Backspace. Enter, closing or reopening the keyboard start an empty line; arrows,
-  Tab, Esc, Ctrl/Alt chords, Paste, a touch outside the keyboard and 30 s without typing start it with "…", since
+  Tab, Esc, Ctrl/Win/Alt chords, Paste, a touch outside the keyboard and 30 s without typing start it with "…", since
   the field's content is then unknown. Longer text scrolls left behind a fade. The field is a light pill like the
   chips; a word autocorrect just changed is highlighted in it for 1.5 s, and a small badge just right of it (outside
   the text) shows the typing mode when it is not the default Big letter keys and "1-thumb" when Pad reach is Right
@@ -108,7 +108,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   Steam's text path through the output queue (one per call, 45 ms between arrows); at most 3 wait in the queue, so
   the cursor never trails the thumb by more than about 135 ms: further steps are dropped and a step back cancels a
   waiting one. The slide finishes the current word, resets the word tracker and marks the typed-text field as
-  unknown. Off while Ctrl/Alt/AltGr is active. The right pad cannot slide left of its own edge (in two-pad mode
+  unknown. Off while Ctrl/Win/Alt/AltGr is active. The right pad cannot slide left of its own edge (in two-pad mode
   that is near the middle of the space bar), so press farther right or use the left pad. Slide-to-delete from
   Backspace is not implemented.
 - **Auto space** (setting "Remove auto space before punctuation", on by default). The tracker flag `T.auto` is set
@@ -135,7 +135,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   in order), until the stroke is a deliberate drag. Released taps go out as soon as every earlier press is released,
   without waiting for a later press still held on the other pad. Taps that are followed within 220 ms by a swipe are
   folded into that word ("r" tapped, "ight" swiped = "right"). Presses on anything that is not a letter (space,
-  Backspace, Shift, digits, suggestions) act on press. Swiping is off while Ctrl / Alt / AltGr is active.
+  Backspace, Shift, digits, suggestions) act on press. Swiping is off while Ctrl / Win / Alt / AltGr is active.
   A swipe is typed as soon as the last pad is released; any other key pressed before that output (Y, X, RT, a
   touched key that is not a letter, LB / RB) types the pending word first: `settleSwipe` first finishes a decode
   still running in slices (`settleFinish`), then any released strokes, before the key, Ctrl / Alt or chord goes
@@ -159,7 +159,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Supported layouts.** One predicate (`layoutSupported`: Steam layouts `qwerty` and `qwerty_int`, the ones the
   English dictionary fits) gates swipe, the suggestion row, autocorrect, learning, the typed-text field, the typing
   modes' pad remap and logging. Any other layout (AZERTY, QWERTZ, Dvorak, Cyrillic, IME ...) types exactly as stock
-  Steam and has no suggestion row; the Esc row and the Ctrl/Alt keys stay.
+  Steam and has no suggestion row; the Esc row and the Ctrl/Win/Alt keys stay.
 - **Spacing and case.** A swiped word gets a space in front when it follows a word or `.,!?;:` (Gboard's
   automatic space); punctuation tapped after it attaches. Shift (key or held left trigger, any time during the swipe)
   capitalises it, Caps Lock upper-cases it.
@@ -231,10 +231,12 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   double letters (bimanual approach of Bi et al., UIST 2012; constants tuned with `bench.mjs`).
 - **Trackpad clamp.** Pad x/y are clamped onto the key area up to 80 px outside it, so an overshoot below the
   bottom row hits the key above it (ValveSoftware/steam-for-linux#10683).
-- **Esc, Ctrl, Alt keys.** Esc goes left of the number row; Ctrl and Alt go to the bottom-left corner. They use
-  Steam's own `Control` / `Alt` toggle states, which the keyboard already had but ignored on output: tap is
-  one-shot (blue label), double tap locks (blue key), a third tap turns it off, like Shift. Holding the key on
-  the touchscreen also works.
+- **Esc, Ctrl, Win, Alt keys.** Esc goes left of the number row; Ctrl, Win and Alt go to the bottom-left corner. They
+  use Steam's own `Control` / `Alt` toggle states, which the keyboard already had but ignored on output, and a `Meta`
+  state the patch adds to the keyboard's `s_keyToggleData` (restored on stop): tap is one-shot (blue label), double
+  tap locks (blue key), a third tap turns it off, like Shift. Holding the key on the touchscreen also works. Win is
+  for Windows hosts over Moonlight (Win+Shift+S is a partial screenshot); Moonlight passes it on when it captures
+  system keyboard shortcuts.
 - **LB / RB** (setting "LB / RB", Input tab: Ctrl / Alt default, Pick words, Off). The bumpers only drive IME
   candidate paging in Steam's keyboard, unused in Latin layouts; in the emoji layouts they still switch categories.
   - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (left trigger already holds Shift).
@@ -251,12 +253,12 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
     from Steam, held repeats are ignored, and nothing is picked from a tracker gone stale (30 s), which is reset
     instead. Needs the suggestion row. Motivation and the measurement: [BAKEOFFS.md](BAKEOFFS.md#typing-log-review-2026-10-30).
   - Off: the bumpers do nothing on the letters.
-- **Output.** While Ctrl or Alt is active, or for Esc, the key goes out as real key events through
+- **Output.** While Ctrl, Win or Alt is active, or for Esc, the key goes out as real key events through
   `SteamClient.Input.ControllerKeyboardSetKeyState(EHIDKeyboardKey, down)`, the same call Steam's Paste key
   uses (LControl 103, V 25). Keys 0-99 are USB HID usages; modifiers are LAlt 100, LShift 101, LWin 102,
-  LControl 103, RShift 105. The real Ctrl/Alt is held down while the toggle is active and released when it
+  LControl 103, RShift 105. The real Ctrl/Win/Alt is held down while the toggle is active and released when it
   clears or the keyboard closes; it never goes down while plain text is still queued: the press waits in the
-  queue behind that text (40 ms chord gap), and a plain character or Backspace that finds Ctrl/Alt down releases
+  queue behind that text (40 ms chord gap), and a plain character or Backspace that finds Ctrl/Win/Alt down releases
   it first and queues the press again after itself. Shift is added for Shift (key or left trigger) and for shifted symbols; Tab
   uses Right Shift because Steam takes LShift+Tab. Plain typing and swiped words stay on Steam's text path
   (`VirtualKeyboardManager.HandleVirtualKeyDown` -> `ControllerKeyboardSendText`, gamescope IME), always one
@@ -265,7 +267,7 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   one queue: `TypeKey` sends straight through when nothing is queued and that key's gap has passed, and records the send;
   otherwise the key waits in the queue — 30 ms between keys, 100 ms since the last press of the same physical key (even with other keys between;
   `a`/`A`, `1`/`!` share a key), 100 ms after Backspace, Enter or another named key, 60 ms when Shift turns on or off,
-  and 40 ms around a Ctrl/Alt chord so Shift cannot leak; non-ASCII is not sent. Shift, Caps, Ctrl, Alt and
+  and 40 ms around a Ctrl/Win/Alt chord so Shift cannot leak; non-ASCII is not sent. Shift, Caps, Ctrl, Win, Alt and
   layout switches (`SwitchKeys_*`) are never queued: Steam applies them at once, and a key that has to wait is
   queued with its case already decided (the character, and Steam's one-shots cleared, at the press), so a
   toggle touched while output is queued applies once. Held Backspace (X, or a pad or touch
@@ -496,7 +498,7 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
 
 - `pnpm i`, then `node keyboard/sim/test.mjs`: first reproduces the stock bugs (rolled space comes out before `h`), then
   injects `patch.js` and checks what the Windows side would receive for rolled typing, overshoot, one-shot and
-  locked Ctrl, Alt+Tab, Esc, Ctrl+Alt+Esc by mouse, Ctrl+Shift+T, LB/RB holds, LB / RB pressed while
+  locked Ctrl, Alt+Tab, Win+Shift+S, Win+s by mouse, Esc, Ctrl+Alt+Esc by mouse, Ctrl+Shift+T, LB/RB holds, LB / RB pressed while
   `typeText` output is queued (text first, no Ctrl/Alt held under it, then the chord), touched Shift and Ctrl
   while 10 characters are queued (`He`, Ctrl+c then a plain h), symbols, Shift+Tab, Ctrl+arrow, release on close, reopen, `stop()` and re-inject. `PRE_PATCH=<old patch.js>` tests the upgrade path,
   `SHOTS=<dir>` saves screenshots.

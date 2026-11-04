@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 32;
+  const VERSION = 33;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -239,15 +239,17 @@
   const K_LALT = 100;
   const K_LSHIFT = 101;
   const K_RSHIFT = 105;
+  const K_LWIN = 102;
   const K_LCTRL = 103;
 
   const ESC_KEY = { key: "Escape", label: "#Key_Escape", type: META, strLocDescription: "#KeyboardKey_Escape" };
   const MOD_KEYS = [
     { key: "Control", label: "#Key_Control", type: META, strLocDescription: "#KeyboardKey_LControl" },
+    { key: "Meta", label: "Win", type: META, strLocDescription: "#KeyboardKey_LWin" },
     { key: "Alt", label: "#Key_Alt", type: META, strLocDescription: "#KeyboardKey_LAlt" },
   ];
   const SUG_KEYS = [0, 1, 2].map((i) => ({ key: SUG + i, label: () => T.labels[i] ?? "", type: META }));
-  const TOGGLES = new Set(["Shift", "CapsLock", "Control", "Alt", "AltGr"]);
+  const TOGGLES = new Set(["Shift", "CapsLock", "Control", "Meta", "Alt", "AltGr"]);
 
   const HID = {
     Enter: [40],
@@ -699,6 +701,14 @@
     C.s_initialFocusRow = state.focusRow + (settings.suggestions && layoutSupported() ? 1 : 0);
   }
 
+  function addWinToggle(kb) {
+    const C = kb.constructor;
+    const map = C?.s_keyToggleData;
+    if (!map || typeof map !== "object" || map.Meta) return;
+    state.statics.push([C, "s_keyToggleData", map]);
+    C.s_keyToggleData = { ...map, Meta: "Meta" };
+  }
+
   function setRepeat(kb) {
     const C = kb.constructor;
     if (!C || typeof C.s_longPressRepeatThreshold !== "number") return;
@@ -753,13 +763,16 @@
 
   function syncHeld(kbs = openKeyboards()) {
     let ctrl = false,
+      win = false,
       alt = false;
     for (const kb of kbs) {
       const ts = kb.state?.toggleStates ?? {};
       ctrl ||= active(ts.Control);
+      win ||= active(ts.Meta);
       alt ||= active(ts.Alt);
     }
     holdKey(K_LCTRL, ctrl);
+    holdKey(K_LWIN, win);
     holdKey(K_LALT, alt);
   }
 
@@ -778,8 +791,9 @@
   }
 
   function plainOut() {
-    if (!state.sent.get(K_LCTRL) && !state.sent.get(K_LALT)) return;
+    if (!state.sent.get(K_LCTRL) && !state.sent.get(K_LWIN) && !state.sent.get(K_LALT)) return;
     setKey(K_LCTRL, false);
+    setKey(K_LWIN, false);
     setKey(K_LALT, false);
     holdLater();
   }
@@ -796,6 +810,7 @@
           ...s.toggleStates,
           Shift: releaseOneShot(s.toggleStates.Shift),
           Control: releaseOneShot(s.toggleStates.Control),
+          Meta: releaseOneShot(s.toggleStates.Meta),
           Alt: releaseOneShot(s.toggleStates.Alt),
           AltGr: releaseOneShot(s.toggleStates.AltGr),
         },
@@ -807,11 +822,12 @@
   function sendChord(kb, key, shifted) {
     const ts = kb.state?.toggleStates ?? {};
     const ctrl = active(ts.Control),
+      win = active(ts.Meta),
       alt = active(ts.Alt),
       shift = active(ts.Shift);
     const isEsc = key === "Escape";
     const shiftNav = shift && key === "Tab";
-    if (!isEsc && !ctrl && !alt && !shiftNav) return false;
+    if (!isEsc && !ctrl && !win && !alt && !shiftNav) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const hid = HID[key];
     if (!hid) return false;
@@ -820,6 +836,7 @@
     const shiftCode = needShift ? (key === "Tab" ? K_RSHIFT : K_LSHIFT) : 0;
     emit(() => {
       setKey(K_LCTRL, ctrl);
+      setKey(K_LWIN, win);
       setKey(K_LALT, alt);
       tapKey(hid[0], shiftCode);
       syncHeld();
@@ -2053,7 +2070,7 @@
     if (!state.swipeOn || !kb || !isOpen(kb)) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const ts = kb.state.toggleStates ?? {};
-    if (active(ts.Control) || active(ts.Alt) || active(ts.AltGr)) return false;
+    if (active(ts.Control) || active(ts.Meta) || active(ts.Alt) || active(ts.AltGr)) return false;
     if (!layoutSupported()) return false;
     return !!getEngine();
   }
@@ -2693,7 +2710,7 @@
     if (!settings.slideCursor || P.open || !kb || !isOpen(kb)) return false;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) return false;
     const ts = kb.state.toggleStates ?? {};
-    return !(active(ts.Control) || active(ts.Alt) || active(ts.AltGr));
+    return !(active(ts.Control) || active(ts.Meta) || active(ts.Alt) || active(ts.AltGr));
   }
 
   function keyWidth(kb) {
@@ -4519,6 +4536,7 @@
     "Enter",
     "Backspace",
     "Control",
+    "Meta",
     "Alt",
     "ArrowLeft",
     "ArrowRight",
@@ -5277,6 +5295,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
       applyLook(doc);
       setFocusRow(kb);
       setRepeat(kb);
+      addWinToggle(kb);
       const visible = isOpen(kb);
       if (visible !== !!kb.__oskWasOpen) {
         kb.__oskWasOpen = visible;

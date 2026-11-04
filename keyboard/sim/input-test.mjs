@@ -487,7 +487,7 @@ await scenario(
 await scenario(
   "fast long slide (8 keys in 160 ms): output catches up within 150 ms of the last move",
   async () => {
-    const t = await padSlide("L", " ", -8, { steps: 16, ms: 10, from: 2 });
+    const t = await padSlide("L", " ", -8, { steps: 16, ms: 10, from: 1 });
     const lag = await page.evaluate(async (t) => {
       const O = window.__oskTrackpadFix.output;
       while (O.busy || O.queue.length) await new Promise((r) => setTimeout(r, 2));

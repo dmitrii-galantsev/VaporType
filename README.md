@@ -1,6 +1,6 @@
 # VaporType
 
-Swipe typing, word suggestions, autocorrect and Esc / Ctrl / Alt keys for the Steam Deck's own on-screen keyboard.
+Swipe typing, word suggestions, autocorrect and Esc / Ctrl / Win / Alt keys for the Steam Deck's own on-screen keyboard.
 It is a [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin.
 
 ![Swiping "hello" across both trackpads, then "great" with the left one](docs/media/swipe.gif)
@@ -74,9 +74,11 @@ to type.
 
 ## Other keys
 
-- **Esc** is left of the number row; **Ctrl** and **Alt** are at the bottom left. Tap Ctrl or Alt once for the next
+- **Esc** is left of the number row; **Ctrl**, **Win** and **Alt** are at the bottom left. Tap one once for the next
   key only, twice to keep it on, a third time to turn it off. Hold LB for Ctrl, RB for Alt (Input → **LB / RB**:
   Ctrl / Alt, Pick words or Off).
+- **Win** is the Windows key, for a Windows PC streamed with Moonlight: Win, Shift, S takes a partial screenshot. If the PC
+  does not react to Win, set Moonlight's **Capture system keyboard shortcuts** to Always.
 - **Settings**: hold the emoji key (the one with the gear).
 
 ![The settings panel, Typing tab](docs/media/settings.png)
@@ -98,7 +100,7 @@ on in the first-use card.
 
 - To get Steam's keyboard back at once: Quick Access → Decky → VaporType → turn off **Enabled**. If that panel won't
   open, disable VaporType in Decky settings → Plugins and restart the Deck.
-- Swiping, suggestions and autocorrect need the English QWERTY layout. Swiping pauses while Ctrl or Alt is on. The
+- Swiping, suggestions and autocorrect need the English QWERTY layout. Swiping pauses while Ctrl, Win or Alt is on. The
   back grips don't work while the keyboard is open.
 - [Open an issue](https://github.com/dmitrii-galantsev/VaporType/issues/new?template=bug_report.md) with the status
   lines from the Quick Access panel and your Steam update channel.
