@@ -658,7 +658,7 @@ if (faultOnly) {
   check(
     "with the typing log on, one keyboard session is one append call",
     appends.length === 1 && WORDS.every((w) => logText.includes(`"committed":"${w}"`)),
-    `${appends.length} appends, ${all10.filter((c) => c.name === "save_user_words").length} saves`,
+    `${appends.length} appends, ${all10.filter((c) => c.name === "save_user_words").length} saves, missing from the log: ${WORDS.filter((w) => !logText.includes(`"committed":"${w}"`)).join(" ") || "none"}`,
   );
   check(
     "the typing-log batch and the words reach Decky's log only as objects",
