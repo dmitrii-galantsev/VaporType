@@ -194,7 +194,10 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   one is filled blue when autocorrect is on and will apply it on space (`correct()` gets `final: true` on space and punctuation only). Picking types it and a space. Right after an
   autocorrect the left chip is "↶ dont": picking it puts the typed word back with its space (Backspace still does
   too). Holding a chip blocks the word and the chip reads "blocked: word · tap to undo" for 3 s. After a space they
-  offer next words learned from your own typing. Backspace right after a swipe deletes the whole
+  offer next words learned from your own typing; after a word with no known followers they offer your most-typed
+  words. While a word is typed, the words you have typed after the previous word and the two likeliest followers in
+  the word-pair table are completion candidates too, and a learned pair raises a completion as much as it raises a
+  next-word prediction. Backspace right after a swipe deletes the whole
   word and its space. With "LB / RB" set to Pick words the bumpers pick chips without moving a thumb off the letters
   (below).
 - **Learning.** Words you finish with space, punctuation or the next swipe are counted: known words get more
@@ -671,4 +674,6 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   (pad taps with noise in mm on the Standard and Big letter keys maps, typed literally and through autocorrect). Results and the decisions taken from them are in
   [BAKEOFFS.md](BAKEOFFS.md); the traces and taps are simulated, not recorded on the deck. `bench-log.mjs` is the
   exception: it replays a real typing log (`OSK_TYPING_LOG`, `OSK_LOG_SINCE`, `OSK_USER_WORDS`) through the suggestion
-  row and autocorrect and prints what picking and autocorrect saved or would have saved.
+  row and autocorrect and prints what picking and autocorrect saved or would have saved. `bench-predict.mjs` replays
+  one or more typing logs (`OSK_TYPING_LOG`, `:`-separated, `OSK_LOG_SINCE`) or a text file (`--text`, two passes)
+  through a fresh engine that learns word by word as the keyboard does, and prints next-word and completion hit rates.
