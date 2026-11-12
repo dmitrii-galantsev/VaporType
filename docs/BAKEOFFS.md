@@ -641,3 +641,54 @@ only: 269 px). The space bar is also where a cursor slide starts. Measured with 
 Decision: 6.45 %, the width of a letter key. The three keys stay as large as the letters a pad already aims at, the
 LB / RB badges still fit beside their labels, and the space bar gets back 44 px (22 %). Narrower keys would trade a
 key the size of a letter for a few more pixels of a bar that is already three letters wide.
+
+## Learned pairs in completions (2026-11-12)
+
+Question: do the words a user keeps typing after the same word come up, both before and after the first letter?
+`keyboard/bench/bench-predict.mjs` replays a typing log through a fresh engine that learns online as the keyboard
+does (new words on their second tapped use, a 30 s gap resets the previous word), so it never sees a word before it
+is typed. It scores tapped words: next word (nothing typed yet, top 3 of `predict`), completion after 1 and 2
+letters (the two chips: `correct` from 2 letters, then `suggest`), "repeat" (the pair of previous word and word
+was typed before in the log) and presses saved if every shown word were picked at once (letters plus the space, one
+press per pick). Source: the author's Deck typing log, 2026-10-24 to 2026-11-11, 4,261 scored words, 496 of them a
+repeated pair; earlier drills are learned but not scored (`OSK_LOG_SINCE=2026-10-24T00:00`). The log is private and
+not in the repo. Chat is `--text corpora/chat-corpus.txt`, two passes. Words ended by Enter are missing from the log
+(they are not logged, by the privacy rule), so the last word of each message is not counted.
+
+| change (cumulative) | next top-1 / top-3 | 1 / 2 letters | repeat: next top-3 / 1 letter | presses saved | chat: next top-3, 1 / 2 letters, repeat 1 letter, saved |
+|---|---|---|---|---|---|
+| before | 7.6 / 14.1 | 32.0 / 44.0 | 61.7 / 65.5 | 30.6 | 48.7, 46.0 / 69.7, 71.6, 48.0 |
+| learned followers of the previous word as completion candidates | 7.6 / 14.1 | 32.8 / 44.2 | 61.7 / 73.1 | 30.7 | 48.7, 50.9 / 70.3, 84.8, 48.6 |
+| + the pair boost in completion scores (`complUserBoost` 1) | 7.6 / 14.1 | 33.6 / 45.9 | 61.7 / 90.4 | 31.1 | 48.7, 55.6 / 72.7, 97.8, 49.3 |
+| + most-typed words fill an empty next-word row (`predictFill`) | 7.9 / 14.7 | 33.6 / 45.9 | 61.7 / 90.4 | 31.2 | 48.7, 55.6 / 72.7, 97.8, 49.3 |
+| **+ two best pair-table followers as candidates for 1-2 letters (`complLM` 2)** | 7.9 / 14.7 | 34.8 / 46.3 | 61.7 / 90.4 | 31.4 | 48.7, 59.4 / 75.1, 97.8, 50.4 |
+
+Before, a word of 1 or 2 letters was completed only from the 8 most frequent words with that prefix, ranked with
+context afterwards, so a learned pair whose word was not among them never showed; and completions got only
+`bigramBoost` (1.2 × ln(1 + count)) for a pair, a twelfth of what next-word prediction gives it. Over the whole log,
+drills included (4,627 words), the change moves next top-3 21.6 → 22.2, 1 / 2 letters 30.4 / 45.9 → 39.7 / 51.3,
+repeated pairs after 1 letter 42.5 → 93.9 and presses saved 36.5 → 37.3.
+
+Tried and not taken (same log, on top of the pair boost unless noted):
+
+- Pair boost in completions 0.2 / 0.5 / 2: repeat after 1 letter 80.3 / 86.1 / 90.4, the rest level; 1 is enough.
+- `predictUserBoost` 8 / 25 (15 now): next top-3 14.4 / 14.0, but repeat top-3 59.9 / 61.7 and chat top-3 47.8 /
+  48.6. 15 stays.
+- Next word as a smoothed share, ln(pair count + α × table probability), α 5 / 20 / 100 / 500: next top-3 14.2 /
+  14.8 / 14.6 / 14.3, repeat top-3 62.5 / 58.7 / 50.8 / 48.0, chat top-3 49.0 / 46.8 / 40.7 / 39.8. No gain that
+  holds on both.
+- Recency (session only, boost halving every 50 / 200 / 1,000 learned words, weight 3 / 6 / 10): next top-3 14.0 /
+  13.8 / 13.8. Worse.
+- Learned word triples (two previous words), boost 5 / 15 / 30 per ln(1 + count): log next top-1 7.7 / 7.8 / 7.8,
+  top-3 14.2 / 14.2 / 14.3; chat (whole lines repeated on pass 2) top-1 31.3 / 35.3 / 37.9. Only 60 of 2,776
+  two-word contexts in the log had been seen before, so this typing has little to gain, and it would need a second
+  previous word from `patch.js` and a new stored table. Not taken.
+- Learning the word ended by Enter (with its pair): not measurable here (those words are not in the log), and it
+  would break the rule that a word ended by Enter or by closing leaves nothing behind (privacy-test.mjs). Not
+  changed.
+
+Unchanged: all 28 gates (typo and prefix cases count for count, next word on the chat corpus 19.5 / 34.0 tune, 17.6 /
+34.6 held-out, without learned data), `bench-real.mjs` 2/3 replaced, 16/17 kept. `bench-log.mjs` (no learning) moves
+the middle chip from 4,141 to 4,189 presses and middle or right from 5,308 to 5,396. A replay is as fast as before.
+Stored data is unchanged: followers are indexed in memory from `bigrams`, and old `user-words.json` files load as
+they are.

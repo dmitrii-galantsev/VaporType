@@ -28,6 +28,9 @@
     phraseBigram: 1,
     denomBeta: 0.1,
     predictUserBoost: 15,
+    predictFill: 1,
+    complUserBoost: 1,
+    complLM: 2,
     phrasePenalty: 0,
     lm: null,
     lengthRatio: [0.4, 2.5],
@@ -281,6 +284,8 @@
       });
     }
     let user = { version: 1, words: {}, bigrams: {} };
+    let follow = null;
+    let userTop = null;
     let byEnds = null;
     let sorted = null;
     let plainSorted = null;
@@ -415,6 +420,37 @@
         if (bc) ll += opt.bigramBoost * Math.log(1 + bc);
       }
       return ll;
+    }
+
+    function followers(pk) {
+      if (!follow) {
+        follow = new Map();
+        for (const [b, c] of Object.entries(user.bigrams)) {
+          const i = b.indexOf(" ");
+          if (i < 0) continue;
+          const a = b.slice(0, i);
+          let m = follow.get(a);
+          if (!m) follow.set(a, (m = new Map()));
+          m.set(b.slice(i + 1), c);
+        }
+      }
+      return follow.get(pk);
+    }
+
+    function setPair(a, w, c) {
+      const bk = a + " " + w;
+      if (c > 0) user.bigrams[bk] = c;
+      else delete user.bigrams[bk];
+      if (!follow) return;
+      let m = follow.get(a);
+      if (c > 0) {
+        if (!m) follow.set(a, (m = new Map()));
+        m.set(w, c);
+      } else m?.delete(w);
+    }
+
+    function pairBoost(e, prev) {
+      return opt.predictUserBoost * Math.log(1 + (user.bigrams[prev + " " + e.first] ?? 0));
     }
 
     function setGeometry(keys) {
@@ -808,11 +844,24 @@
       const add = (e) => {
         if (!e || e.removed || e.phrase || seen.has(e.k)) return;
         seen.add(e.k);
-        const bc = user.bigrams[prev + " " + e.k] ?? 0;
-        out.push({ word: e.d, key: e.k, score: logPrior(e, prev, 1) + opt.predictUserBoost * Math.log(1 + bc) });
+        out.push({ word: e.d, key: e.k, score: logPrior(e, prev, 1) + pairBoost(e, prev) });
       };
-      const pk = prev + " ";
-      for (const k of Object.keys(user.bigrams)) if (k.startsWith(pk)) add(entries.get(k.slice(pk.length)));
+      for (const k of followers(prev)?.keys() ?? []) add(entries.get(k));
+      const fill = () => {
+        if (!userTop)
+          userTop = Object.entries(user.words)
+            .sort((a, b) => b[1].c - a[1].c)
+            .slice(0, 8)
+            .map((x) => x[0]);
+        const extra = [];
+        for (const k of userTop) {
+          const e = entries.get(k);
+          if (!e || e.removed || e.phrase || seen.has(k)) continue;
+          seen.add(k);
+          extra.push({ word: e.d, key: k, score: -Infinity });
+        }
+        return extra;
+      };
       const node = ctxFor(prev).node;
       if (node) {
         if (!node.top)
@@ -823,6 +872,7 @@
         for (const k of node.top) add(entries.get(k));
       }
       out.sort((x, y) => y.score - x.score);
+      if (opt.predictFill && out.length < n) out.push(...fill());
       return out.slice(0, n);
     }
 
@@ -1154,8 +1204,21 @@
       const eT = entries.get(k);
       const knownT = eT && !eT.removed ? eT : null;
       const protect = !!knownT && (knownT.c > 0 || knownT.z >= opt.protectZipf);
-      const compl = (e, extra) => lp(e) - opt.sugComplCost - opt.sugComplPerLetter * Math.max(0, extra);
-      const own = k.length <= 2 ? prefixTop(k, opt.sugCompletions) : complete(raw, ctx, opt.sugCompletions).map((c) => entries.get(c.key));
+      const compl = (e, extra) =>
+        lp(e) + (prev ? opt.complUserBoost * pairBoost(e, prev) : 0) - opt.sugComplCost - opt.sugComplPerLetter * Math.max(0, extra);
+      const own = [
+        ...(k.length <= 2 ? prefixTop(k, opt.sugCompletions) : complete(raw, ctx, opt.sugCompletions).map((c) => entries.get(c.key))),
+      ];
+      if (prev && opt.complUserBoost) for (const w of followers(prev)?.keys() ?? []) if (w.startsWith(k)) own.push(entries.get(w));
+      if (prev && opt.complLM && k.length <= 2) {
+        const node = ctxFor(prev).node;
+        if (node) {
+          const top = [];
+          for (const [w, c] of node.m) if (w.startsWith(k)) top.push([c, w]);
+          top.sort((a, b) => b[0] - a[0]);
+          for (const [, w] of top.slice(0, opt.complLM)) own.push(entries.get(w));
+        }
+      }
       for (const e of own) if (e && e.k !== k) put(e, compl(e, plainKey(e.k).length - plainKey(k).length), "completion");
       let typedScore = knownT ? lp(knownT) : -Infinity;
       const plain =
@@ -1268,6 +1331,7 @@
         invalidate();
       }
       e.c += 1;
+      userTop = null;
       const u = (user.words[k] ??= { c: 0, d: e.d });
       u.c = e.c;
       if (e.z === 0 && word !== e.d && word.toLowerCase() === k) {
@@ -1277,7 +1341,7 @@
         e.d = u.d = best;
       }
       const pk = prevKey(prev);
-      if (pk && entries.has(pk)) user.bigrams[pk + " " + e.first] = (user.bigrams[pk + " " + e.first] ?? 0) + 1;
+      if (pk && entries.has(pk)) setPair(pk, e.first, (user.bigrams[pk + " " + e.first] ?? 0) + 1);
       return true;
     }
 
@@ -1295,12 +1359,9 @@
         e.removed = true;
         invalidate();
       }
+      userTop = null;
       const pk = prevKey(prev);
-      if (pk) {
-        const bk = pk + " " + e.first;
-        if (user.bigrams[bk] > 1) user.bigrams[bk]--;
-        else delete user.bigrams[bk];
-      }
+      if (pk) setPair(pk, e.first, (user.bigrams[pk + " " + e.first] ?? 0) - 1);
     }
 
     function forget(word) {
@@ -1309,6 +1370,8 @@
       const e = entries.get(k);
       delete user.words[k];
       for (const b of Object.keys(user.bigrams)) if (b.startsWith(k + " ") || b.endsWith(" " + k)) delete user.bigrams[b];
+      follow = null;
+      userTop = null;
       if (!e) return;
       e.c = 0;
       if (e.z === 0) {
@@ -1337,6 +1400,8 @@
         if (e.z === 0 && u.d) e.d = u.d;
       }
       user = { version: 1, words: { ...(data.words ?? {}) }, bigrams: { ...(data.bigrams ?? {}) } };
+      follow = null;
+      userTop = null;
       invalidate();
     }
 
@@ -1346,6 +1411,7 @@
       if (keys.length > MAX_BIGRAMS) {
         keys.sort((a, b) => user.bigrams[a] - user.bigrams[b]);
         for (const k of keys.slice(0, keys.length - MAX_BIGRAMS)) delete user.bigrams[k];
+        follow = null;
       }
       return JSON.parse(JSON.stringify(user));
     }
