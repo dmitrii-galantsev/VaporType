@@ -2699,14 +2699,36 @@
     );
   }
 
-  function releaseEnterHold(kb) {
+  function holdEnter(kb, side, button, el) {
+    const h = (SW.enterHold ??= { kb, el, down: new Map(), sides: new Set(), timer: null });
+    clearTimeout(h.timer);
+    h.timer = null;
+    h.down.set(button, side);
+    h.sides.add(side);
+    setPadDown(h.kb, side, true);
+  }
+
+  function enterPadsTouched(h) {
+    return [...h.sides].some((s) => (s === "L" ? h.kb.m_leftTrackpad : h.kb.m_rightTrackpad)?.active);
+  }
+
+  function releaseEnterHold(button) {
     const h = SW.enterHold;
     if (!h) return;
-    h.up = true;
-    setPadDown(kb, h.side, false);
-    const pad = h.side === "L" ? kb.m_leftTrackpad : kb.m_rightTrackpad;
-    if (!pad?.active) sendEnterHold();
+    const side = h.down.get(button);
+    h.down.delete(button);
+    if (![...h.down.values()].includes(side)) setPadDown(h.kb, side, false);
+    if (h.down.size) return;
+    if (!enterPadsTouched(h)) sendEnterHold();
     else h.timer = setTimeout(sendEnterHold, ENTER_LIFT_MS);
+  }
+
+  function dropEnterHold() {
+    const h = SW.enterHold;
+    SW.enterHold = null;
+    if (!h) return;
+    clearTimeout(h.timer);
+    for (const s of h.sides) setPadDown(h.kb, s, false);
   }
 
   function sendEnterHold() {
@@ -2850,8 +2872,16 @@
     if (button !== LPAD_CLICK && button !== RPAD_CLICK && button !== TRIGGER_LEFT && button !== TRIGGER_RIGHT) return;
     const kbAny = findKeyboard(e.currentTarget?.document ?? e.target?.ownerDocument);
     const side = kbAny && padSideFor(kbAny, button);
-    if (!side) return;
     const down = e.type === "vgp_onbuttondown";
+    if (SW.enterHold && (down ? !!side : SW.enterHold.down.has(button))) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (e.detail?.is_repeat) return;
+      if (down) holdEnter(SW.enterHold.kb, side, button, null);
+      else releaseEnterHold(button);
+      return;
+    }
+    if (!side) return;
     const isTrigger = button === TRIGGER_LEFT || button === TRIGGER_RIGHT;
     if (SW.held[side] && !!SW.held[side].trigger !== isTrigger) {
       e.stopImmediatePropagation();
@@ -2881,14 +2911,7 @@
       }
     }
     if (e.detail?.is_repeat) {
-      if (SW.held[side] || SW.sugHold?.side === side || SW.emojiHold?.side === side || SW.enterHold?.side === side || SL.s?.side === side)
-        e.stopImmediatePropagation();
-      return;
-    }
-    if (!down && SW.enterHold?.side === side && !SW.enterHold.up) {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      releaseEnterHold(kb);
+      if (SW.held[side] || SW.sugHold?.side === side || SW.emojiHold?.side === side || SL.s?.side === side) e.stopImmediatePropagation();
       return;
     }
     if (!down && SW.sugHold?.side === side) {
@@ -2934,8 +2957,7 @@
           flushSession(kb);
           e.stopImmediatePropagation();
           e.preventDefault();
-          SW.enterHold = { side, el: hit, kb, up: false, timer: null };
-          setPadDown(kb, side, true);
+          holdEnter(kb, side, button, hit);
           return;
         }
         if (hitKey === " " && !SW.held[side] && !SL.s && slideAllowed(kb)) {
@@ -4757,7 +4779,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
                 note(e);
               }
             }
-            if (!on && SW.enterHold?.up && SW.enterHold.side === side) sendEnterHold();
+            if (!on && SW.enterHold && !SW.enterHold.down.size && !enterPadsTouched(SW.enterHold)) sendEnterHold();
             return r;
           },
       ) || changed;
@@ -5292,13 +5314,14 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     P.held.clear();
     dropHeld(kbs);
     const kb = kbs[0];
-    for (const h of [SW.sugHold, SW.emojiHold, SW.echoHold, SW.touchHold, SW.emojiTouch, SW.enterHold]) {
+    for (const h of [SW.sugHold, SW.emojiHold, SW.echoHold, SW.touchHold, SW.emojiTouch]) {
       if (!h) continue;
       clearTimeout(h.timer);
       if (h.el) holdRing(h.el, false);
       if (kb && (h.side === "L" || h.side === "R")) setPadDown(kb, h.side, false);
     }
-    SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = SW.enterHold = null;
+    SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = null;
+    dropEnterHold();
   }
 
   function tickPatched() {

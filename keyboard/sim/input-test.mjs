@@ -428,6 +428,80 @@ await scenario(
   },
   (o, s, x) => o === "⏎" && x.early === true && x.late === false,
 );
+const sentCount = () => page.evaluate(() => window.__keyLog.length);
+const lift = (side) =>
+  kbEval((kb, side) => (side === "L" ? kb.OnLeftTrackpadAnalog(false, 0, 0, 0) : kb.OnRightTrackpadAnalog(false, 0, 0, 0)), side);
+async function armClosingEnter() {
+  await setSetting("enterCloses", true);
+  await page.evaluate(() => window.__sim.vkm.SetDismissOnEnterKey(true));
+  return center("Enter");
+}
+await scenario(
+  "Enter by the right trigger as pad click: the thumb lifting first still waits for the trigger to come up",
+  async () => {
+    await page.evaluate(() => (window.__oskTrackpadFix.inputSettings = { TrackpadTypingTriggerAsClick: true }));
+    const c = await armClosingEnter();
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", 8);
+    await sleep(40);
+    await lift("R");
+    await sleep(350);
+    const held = { showing: await showingNow(), sent: await sentCount() };
+    await vgp("vgp_onbuttonup", 8);
+    await settle(page);
+    const closed = !(await showingNow());
+    await page.evaluate(() => (window.__oskTrackpadFix.inputSettings = null));
+    await reopenAfterEnter();
+    return { held, closed };
+  },
+  (o, s, x) => o === "⏎" && x.held.showing && !x.held.sent && x.closed,
+);
+await scenario(
+  "Enter that closes the keyboard: a second click on the same pad inside the lift window waits for that click too",
+  async () => {
+    const c = await armClosingEnter();
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(20);
+    await vgp("vgp_onbuttonup", BTN.R);
+    await sleep(40);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(400);
+    const held = { showing: await showingNow(), sent: await sentCount() };
+    await vgp("vgp_onbuttonup", BTN.R);
+    await lift("R");
+    await settle(page);
+    const closed = !(await showingNow());
+    await reopenAfterEnter();
+    return { held, closed };
+  },
+  (o, s, x) => o === "⏎" && x.held.showing && !x.held.sent && x.closed,
+);
+await scenario(
+  "Enter that closes the keyboard: a click on the other pad while Enter is held waits for both clicks and both thumbs",
+  async () => {
+    const c = await armClosingEnter();
+    const h = await center("h");
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await padAt("L", h.x, h.y);
+    await vgp("vgp_onbuttondown", BTN.L);
+    await sleep(20);
+    await vgp("vgp_onbuttonup", BTN.R);
+    await lift("R");
+    await sleep(350);
+    const held = { showing: await showingNow(), sent: await sentCount() };
+    await vgp("vgp_onbuttonup", BTN.L);
+    await sleep(60);
+    const leftResting = await showingNow();
+    await lift("L");
+    await settle(page);
+    const closed = !(await showingNow());
+    await reopenAfterEnter();
+    return { held, leftResting, closed };
+  },
+  (o, s, x) => o === "⏎" && x.held.showing && !x.held.sent && x.leftResting && x.closed,
+);
 await scenario(
   "Enter with the setting off still types on press and keeps the keyboard open",
   async () => {
