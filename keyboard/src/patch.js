@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 34;
+  const VERSION = 35;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -25,6 +25,7 @@
   const KEY_GAP_MS = 30;
   const BACKSPACE_REPEAT_MS = 100;
   const HOLD_MS = 550;
+  const ENTER_LIFT_MS = 250;
   const LEARN_SWIPE_ZIPF = 3.5;
   const STALE_MS = 30000;
   const NEW_WORD_USES = 2;
@@ -2688,6 +2689,38 @@
     }
   }
 
+  function enterWillClose(kb) {
+    const vkm = vkmOf(kb);
+    return (
+      !!settings.enterCloses &&
+      !!vkm &&
+      (vkm.m_bDismissOnEnter === true || state.dismissVkm === vkm) &&
+      !active(kb.state?.toggleStates?.Shift)
+    );
+  }
+
+  function releaseEnterHold(kb) {
+    const h = SW.enterHold;
+    if (!h) return;
+    h.up = true;
+    setPadDown(kb, h.side, false);
+    const pad = h.side === "L" ? kb.m_leftTrackpad : kb.m_rightTrackpad;
+    if (!pad?.active) sendEnterHold();
+    else h.timer = setTimeout(sendEnterHold, ENTER_LIFT_MS);
+  }
+
+  function sendEnterHold() {
+    const h = SW.enterHold;
+    SW.enterHold = null;
+    if (!h) return;
+    clearTimeout(h.timer);
+    try {
+      h.kb.TypeKey(h.el);
+    } catch (e) {
+      note(e);
+    }
+  }
+
   function clearSlide() {
     SL.s?.el?.classList?.remove("osk-sliding", "osk-slide-left", "osk-slide-right");
     SL.s = null;
@@ -2848,7 +2881,14 @@
       }
     }
     if (e.detail?.is_repeat) {
-      if (SW.held[side] || SW.sugHold?.side === side || SW.emojiHold?.side === side || SL.s?.side === side) e.stopImmediatePropagation();
+      if (SW.held[side] || SW.sugHold?.side === side || SW.emojiHold?.side === side || SW.enterHold?.side === side || SL.s?.side === side)
+        e.stopImmediatePropagation();
+      return;
+    }
+    if (!down && SW.enterHold?.side === side && !SW.enterHold.up) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      releaseEnterHold(kb);
       return;
     }
     if (!down && SW.sugHold?.side === side) {
@@ -2888,6 +2928,14 @@
           e.stopImmediatePropagation();
           e.preventDefault();
           startEmojiHold(kb, side, emojiEl);
+          return;
+        }
+        if (hitKey === "Enter" && !SW.held[side] && !SW.enterHold && enterWillClose(kb)) {
+          flushSession(kb);
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          SW.enterHold = { side, el: hit, kb, up: false, timer: null };
+          setPadDown(kb, side, true);
           return;
         }
         if (hitKey === " " && !SW.held[side] && !SL.s && slideAllowed(kb)) {
@@ -4709,6 +4757,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
                 note(e);
               }
             }
+            if (!on && SW.enterHold?.up && SW.enterHold.side === side) sendEnterHold();
             return r;
           },
       ) || changed;
@@ -5243,13 +5292,13 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     P.held.clear();
     dropHeld(kbs);
     const kb = kbs[0];
-    for (const h of [SW.sugHold, SW.emojiHold, SW.echoHold, SW.touchHold, SW.emojiTouch]) {
+    for (const h of [SW.sugHold, SW.emojiHold, SW.echoHold, SW.touchHold, SW.emojiTouch, SW.enterHold]) {
       if (!h) continue;
       clearTimeout(h.timer);
       if (h.el) holdRing(h.el, false);
       if (kb && (h.side === "L" || h.side === "R")) setPadDown(kb, h.side, false);
     }
-    SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = null;
+    SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = SW.enterHold = null;
   }
 
   function tickPatched() {
@@ -5502,6 +5551,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     !SW.drawPending &&
     !SW.sugHold &&
     !SW.emojiHold &&
+    !SW.enterHold &&
     !SW.echoHold &&
     !state.tickSoon &&
     !state.refreshTimer &&
@@ -5570,7 +5620,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     };
     step(() => window.__oskModes?.sync?.(null, null, modeApi));
     step(() => closePanel());
-    for (const h of [SW.emojiHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold]) clearTimeout(h?.timer);
+    for (const h of [SW.emojiHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold, SW.enterHold]) clearTimeout(h?.timer);
     clearSlide();
     dropFinish();
     step(() => restoreDismiss());

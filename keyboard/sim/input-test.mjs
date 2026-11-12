@@ -380,6 +380,70 @@ await scenario(
   (o, s, x) => o === "⏎" && x.showing === false,
 );
 
+const showingNow = () => page.evaluate(() => window.__sim.vkm.m_bIsVirtualKeyboardShowing.Value);
+async function reopenAfterEnter() {
+  await setSetting("enterCloses", false);
+  if (!(await showingNow())) {
+    await page.evaluate(() => window.__sim.vkm.SetVirtualKeyboardVisible());
+    await waitKeyboard(page);
+  }
+}
+await scenario(
+  "Enter that closes the keyboard waits for the pad click to come up and the thumb to lift",
+  async () => {
+    await setSetting("enterCloses", true);
+    await page.evaluate(() => window.__sim.vkm.SetDismissOnEnterKey(true));
+    const c = await center("Enter");
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(60);
+    const down = { showing: await showingNow(), sent: await page.evaluate(() => window.__keyLog.length) };
+    await vgp("vgp_onbuttonup", BTN.R);
+    await sleep(60);
+    const up = { showing: await showingNow(), sent: await page.evaluate(() => window.__keyLog.length) };
+    await kbEval((kb) => kb.OnRightTrackpadAnalog(false, 0, 0, 0));
+    await settle(page);
+    const lifted = await showingNow();
+    await reopenAfterEnter();
+    return { down, up, lifted };
+  },
+  (o, s, x) => o === "⏎" && x.down.showing && !x.down.sent && x.up.showing && !x.up.sent && x.lifted === false,
+);
+await scenario(
+  "Enter that closes the keyboard with the thumb left on the pad goes out 250 ms after the click comes up",
+  async () => {
+    await setSetting("enterCloses", true);
+    await page.evaluate(() => window.__sim.vkm.SetDismissOnEnterKey(true));
+    const c = await center("Enter");
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(20);
+    await vgp("vgp_onbuttonup", BTN.R);
+    await sleep(120);
+    const early = await showingNow();
+    await sleep(300);
+    const late = await showingNow();
+    await reopenAfterEnter();
+    return { early, late };
+  },
+  (o, s, x) => o === "⏎" && x.early === true && x.late === false,
+);
+await scenario(
+  "Enter with the setting off still types on press and keeps the keyboard open",
+  async () => {
+    await page.evaluate(() => window.__sim.vkm.SetDismissOnEnterKey(true));
+    const c = await center("Enter");
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(60);
+    const sentDown = await page.evaluate(() => window.__keyLog.length);
+    await vgp("vgp_onbuttonup", BTN.R);
+    await padIdle("R");
+    return { sentDown, showing: await showingNow() };
+  },
+  (o, s, x) => o === "⏎" && x.sentDown > 0 && x.showing === true,
+);
+
 await scenario(
   "plain space by pad still types a space (on release)",
   () => padTap("R", " "),

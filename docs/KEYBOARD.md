@@ -130,12 +130,16 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   read once in `HandleVirtualKeyDown("Enter")`, unless Shift is held). With the setting off the patch clears
   `m_bDismissOnEnter` before Steam handles Enter, so chat can go on line after line; B, Close or Steam+X still close.
   It remembers that it cleared Steam's flag and sets it again at the next Enter once the setting is on, when the
-  keyboard closes and on `stop()` (`dismissOnEnter`, `restoreDismiss`).
+  keyboard closes and on `stop()` (`dismissOnEnter`, `restoreDismiss`). An Enter that will close the keyboard and is
+  pressed with a pad (or a trigger acting as one) is held until that click comes up and the thumb leaves the pad, or
+  250 ms after the click comes up while the thumb stays (`enterWillClose`, `releaseEnterHold`). Steam hands the pads
+  back to the game's controller config as the keyboard hides; sent on press, the click still held went to the game
+  as whatever that config binds to it (a mouse click on a pad set to mouse).
 - **Taps vs swipes.** A press on a letter is a tap, typed on release in press order (rolled two-thumb typing stays
   in order), until the stroke is a deliberate drag. Released taps go out as soon as every earlier press is released,
   without waiting for a later press still held on the other pad. Taps that are followed within 220 ms by a swipe are
   folded into that word ("r" tapped, "ight" swiped = "right"). Presses on anything that is not a letter (space,
-  Backspace, Shift, digits, suggestions) act on press. Swiping is off while Ctrl / Win / Alt / AltGr is active.
+  Backspace, Shift, digits, suggestions) act on press, except an Enter that closes the keyboard (above). Swiping is off while Ctrl / Win / Alt / AltGr is active.
   A swipe is typed as soon as the last pad is released; any other key pressed before that output (Y, X, RT, a
   touched key that is not a letter, LB / RB) types the pending word first: `settleSwipe` first finishes a decode
   still running in slices (`settleFinish`), then any released strokes, before the key, Ctrl / Alt or chord goes
