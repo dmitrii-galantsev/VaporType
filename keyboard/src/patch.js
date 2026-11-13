@@ -1696,14 +1696,15 @@
       const lower = T.buf.toLowerCase();
       let raw = [];
       try {
-        raw = eng.suggest(T.buf, { prev: T.prev, keys: letterKeys(kb), taps: tapsCtx() }, 6) ?? [];
+        raw = eng.suggest(T.buf, { prev: T.prev, keys: letterKeys(kb), taps: tapsCtx() }, 8) ?? [];
       } catch (e) {
         note(e);
       }
       const seen = new Set([lower]);
       const list = [];
       const corr = correction(kb);
-      if (corr) {
+      const applies = !!corr?.confident && eff("autocorrect");
+      if (applies) {
         list.push({ word: corr.text, key: corr.word.toLowerCase(), corr: true });
         seen.add(corr.word.toLowerCase());
       }
@@ -1715,8 +1716,8 @@
       }
       const unknown = eff("learn") && T.buf.length >= 2 && WORD_RE.test(T.buf) && !eng.known(lower);
       const lit = unknown ? { word: T.buf, label: `+ add ${T.buf}`, add: true } : { word: T.buf, label: `“${T.buf}”`, literal: true };
-      const items = [lit, list[0] ?? null, list[1] ?? null];
-      return setSuggestions(kb, items, "complete", list.length && corr?.confident && eff("autocorrect") ? 1 : -1);
+      const items = [!applies && midWord(lower, list) ? list[2] : lit, list[0] ?? null, list[1] ?? null];
+      return setSuggestions(kb, items, "complete", applies ? 1 : -1);
     }
     if (T.autocorr && !T.buf) {
       const p = eng.predict?.(T.prev, 8)?.filter(notBlocked) ?? [];
@@ -1726,6 +1727,18 @@
       return setSuggestions(kb, slot(eng.predict(T.prev, 8).filter(notBlocked).slice(0, 3)), "predict");
     }
     setSuggestions(kb, [], null);
+  }
+
+  function midWord(lower, list) {
+    if (list.length < 3) return false;
+    const bare = (w) => w.toLowerCase().replace(/[' ]/g, "");
+    const p = bare(lower);
+    let n = 0;
+    for (let i = 0; i < 3; i++) {
+      const w = bare(list[i].word);
+      if (w !== p && w.startsWith(p)) n++;
+    }
+    return n >= 2;
   }
 
   function pickSuggestion(kb, i) {
