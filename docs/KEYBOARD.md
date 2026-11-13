@@ -4,7 +4,7 @@ What `keyboard/src/` does inside Steam, the injector API and the simulator. User
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
 The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v36) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
+`osk` names. `patch.js` (v37) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
 `TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
 
 - **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
@@ -189,15 +189,24 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Suggestion row** above the number row, three slots, reachable by either pad (where a chip with a word is under the
   pointer), touch or gamepad:
   after a swipe the middle (blue) slot is the typed word and the sides are the next candidates; picking one
-  replaces it. While tapping a word the left slot keeps the typed letters (“lpl”, or "+ add lpl" for a new word) and the
-  middle and right slots come from `engine.suggest` (fuzzy: completions and corrections, "lpl" -> "lol"); the middle
-  one is filled blue when autocorrect is on and will apply it on space (`correct()` gets `final: true` on space and punctuation only). Picking types it and a space. Right after an
+  replaces it. While tapping a word the middle and right slots come from `engine.suggest`, best first
+  (completions and corrections, "lpl" -> "lol"). The left slot shows a third candidate while the letters are a word
+  in progress, that is while at least two of the first three candidates extend them ("wh": who / what / when);
+  otherwise it keeps the typed letters (“lpl”, or "+ add lpl" for a new word). When autocorrect is on and will change
+  the word on space, that correction is the middle slot, filled blue, and the left slot is the typed letters
+  (`correct()` gets `final: true` on space and punctuation only). Picking types it and a space. Right after an
   autocorrect the left chip is "↶ dont": picking it puts the typed word back with its space (Backspace still does
-  too). Holding a chip blocks the word and the chip reads "blocked: word · tap to undo" for 3 s. After a space they
-  offer next words learned from your own typing; after a word with no known followers they offer your most-typed
-  words. While a word is typed, the words you have typed after the previous word and the two likeliest followers in
-  the word-pair table are completion candidates too, and a learned pair raises a completion as much as it raises a
-  next-word prediction. Backspace right after a swipe deletes the whole
+  too). Holding a chip blocks the word and the chip reads "blocked: word · tap to undo" for 3 s. After a space the
+  three slots offer next words; after Enter, and when the keyboard opens, the words you start lines with (nothing
+  until some are learned). One word model ranks all of it (`rowP` in `engine.js`): the probability of a word after
+  the two previous words. Its base is the dictionary frequency mixed half and half with the word's share of the pair
+  table, then the pair table, then the word triples. Your own typing sits on top as counts: every learned use of a
+  word weighs against 1,000 words of that base (`rowAlpha`), and every learned pair against 5 plus the number of
+  different words you typed after the first one (`rowBeta`, `rowBetaTypes`), so a pair typed once after a rare word
+  counts for much and after "I" for little. A completion is ranked by that probability alone; a correction also pays
+  its edit cost and a typo cost (`rowTypoCost` 2); a split into two words that are not a dictionary phrase pays a
+  missing-space cost (`rowSplitCost` 3); one-letter words are not offered as corrections. Measurements:
+  [BAKEOFFS.md](BAKEOFFS.md#one-word-model-for-the-suggestion-row-engine-v10-pairs-v6-keyboard-v37). Backspace right after a swipe deletes the whole
   word and its space. With "LB / RB" set to Pick words the bumpers pick chips without moving a thumb off the letters
   (below).
 - **Learning.** Words you finish with space, punctuation or the next swipe are counted: known words get more
@@ -211,7 +220,8 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   tapping and ended with a space, punctuation or, after another word on the line, Enter within one Steam session. Only letters with an optional apostrophe, 2-24 long,
   are learned; pairs of consecutive known words are counted for next-word suggestions. Every field is
   learned from, including password fields Steam cannot tell apart: a passphrase of ordinary words separated
-  by spaces raises those words and their pairs. Deleting a swiped word with Backspace counts against it.
+  by spaces raises those words and their pairs. The first word of a line (after Enter, or after the keyboard opened)
+  is also counted as a line start, stored as the pair `^ word`; the only word of a line ended by Enter is not. Deleting a swiped word with Backspace counts against it.
   `window.__oskTrackpadFix.forget("word")` and `forgetAll()` remove learned data. Learned data lives in
   `user-words.json` (previous version `.bak`; counts only, no timestamps): under `~/homebrew/settings/vaportype/`
   with the plugin, beside `inject.mjs` with the standalone injector, written within 5 s of a change, and in Steam's `localStorage`
@@ -231,13 +241,18 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Dictionary and word pairs.** `keyboard/data/words.js` and `keyboard/data/lm.js`, built by
   `keyboard/build/build_words.py` from wordfreq, the SCOWL word lists and the generated chat and web pair counts in
   `keyboard/data/inputs/` (`pip install wordfreq==3.1.1`; `OSK_*` variables select variants; the default build
-  reproduces the shipped files byte for byte). Sources and licenses: [DATA-LICENSES.md](../keyboard/data/DATA-LICENSES.md).
+  reproduces words.js byte for byte and lm.js up to the triples). `python3 keyboard/build/build_trigrams.py --merge`
+  then appends 25,000 word triples (lines `a b c z10`, read by engine v10 on and skipped by older engines) counted in
+  the same generated lines and sets the pair-table version to 6; it needs no wordfreq and gave the same bytes on two
+  hosts. Sources and licenses: [DATA-LICENSES.md](../keyboard/data/DATA-LICENSES.md).
   `keyboard/src/engine.js` is
-  the decoder and learner (`createEngine(words, { lm })` with `decode`, `complete`, `predict`, `correct`,
+  the decoder and learner (`createEngine(words, { lm })` with `decode`, `complete`, `suggest`, `predict`, `correct`,
   `learn`, `unlearn`, `forget`, `info`, `warm`, `warmStep`, `setUser`, `exportUser`; `warmStep()` builds one index, 200 000
   characters of the pair table or one letter's completions per call, and the patch creates the engine and runs these
-  steps in idle callbacks after it loads, so the first keyboard open does none of it); a word pair you typed twice comes
-  first in `predict`. It splits the trace into one
+  steps in idle callbacks after it loads, so the first keyboard open does none of it). `suggest` and `predict` take
+  `ctx.prev` with up to two previous words and `ctx.start` at the start of a line. `decode` and `correct` keep their own
+  prior (dictionary frequency, the pair table with one previous word, a flat bonus per learned use), which the swipe
+  and autocorrect gates are tuned on. `decode` splits the trace into one
   run per pad press (points tagged `L1`, `R2`, ... by `patch.js`), ignores a pad held still while the other
   works, splits the word's letters across the runs in order within each pad's reach (`ctx.pads`), and scores
   location (DTW), start/end keys, shape, length and word frequency, with a bonus for pauses or loops on
@@ -689,3 +704,9 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   row and autocorrect and prints what picking and autocorrect saved or would have saved. `bench-predict.mjs` replays
   one or more typing logs (`OSK_TYPING_LOG`, `:`-separated, `OSK_LOG_SINCE`) or a text file (`--text`, two passes)
   through a fresh engine that learns word by word as the keyboard does, and prints next-word and completion hit rates.
+  `bench-chips.mjs` does the same replay through the row as `patch.js` builds it (which slots show what, with the log's
+  own key geometry and tap positions) and prints, per number of typed letters, how often the word is in the first
+  chip, in two, in three and in the row as shown, the presses saved if every shown word were picked at once, the share
+  of chips that do not extend a correctly typed prefix, and how many real typos (a pick that was not a completion) the
+  row offers; `--legacy` builds the row as keyboard v35 did. `gates.mjs` runs it on the chat corpus and on a list of
+  row cases (`ROW_CASES`).

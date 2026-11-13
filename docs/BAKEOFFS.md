@@ -702,3 +702,100 @@ Unchanged: all 28 gates (typo and prefix cases count for count, next word on the
 the middle chip from 4,141 to 4,189 presses and middle or right from 5,308 to 5,396. A replay is as fast as before.
 Stored data is unchanged: followers are indexed in memory from `bigrams`, and old `user-words.json` files load as
 they are.
+
+## One word model for the suggestion row (engine v10, pairs v6, keyboard v37)
+
+Reported: "there are definitely issues with some completions". Replaying the author's Deck typing log (2026-10-24 to
+2026-11-12, 4,261 tapped words scored, the scripted drills left out of scoring and learning) through the row as
+keyboard v35 built it showed what they were. One chip in ten did not extend a correctly typed prefix: a short common
+word one edit away ("wa" → a, "sp" → so, "ther" → the, "inve" → nice), or a split nobody typed ("thei" → the I,
+"assis" → ass is, "playin" → play in ahead of playing). The cause was structural. The row put `correct()`'s best
+lookalike first whether or not autocorrect would apply it, a completion paid 2 + 0.3 per missing letter while a
+correction paid only its edit cost, a missing space cost 0.5, and a word the user typed 40 times gained less than a
+rare dictionary word did. The log has 14 real typos fixed by a pick in those 4,261 words, so the row was tuned for
+the rare case.
+
+`keyboard/bench/bench-chips.mjs` is the new bench: it replays a typing log (with its own key geometry and tap
+positions) or a text through a fresh engine that learns as the keyboard does, builds the row as `patch.js` does, and
+reports, per number of typed letters, how often the word is in the row, the presses saved if every shown word were
+picked at once (letters plus the space; a pick is one press; a next-word, line-start or phrase chip that holds the
+whole word counts), the share of chips that do not extend a correctly typed prefix, and how many of the real typos
+the row offers. `--legacy` builds the v35 row; the "before" rows use it with the v9 engine and the v4 pair table.
+
+Changes, cumulative:
+
+1. One word model (`rowP`). Every candidate is scored as ln P(word | previous word, this user): dictionary frequency
+   mixed half and half with the word's share of the pair table, then the pair table, then the user's own counts as
+   observations (a learned use against 1,000 words of prior; a learned pair against 5 plus the number of different
+   followers typed after that word). A completion pays nothing, a correction its edit cost plus 2, a made-up split
+   3, one-letter words are not corrections, and the row follows `suggest()`'s order; a correction goes first only
+   when autocorrect is on and will apply it.
+2. Third chip. The left slot showed the typed letters or "+ add" on every keystroke. While the letters are a word in
+   progress (two of the first three candidates extend them) it now shows the third candidate.
+3. Line starts. After Enter and when the keyboard opens, the row offers the words this user starts lines with, and
+   the first word is completed with that context. In the old logs a gap of 30 s stands in for the line start.
+4. Word triples. 25,000 triples from the generated lines (`build_trigrams.py`) and two previous words from
+   `patch.js`.
+
+| row | word in the row after 1 / 2 / 3 / 4 letters | presses saved | second half of the log: after 1 / 2 / 3 / 4 letters | presses saved |
+|---|---|---|---|---|
+| before (v9, v35 row) | 34.8 / 46.2 / 60.1 / 67.2 | 31.8 | 34.9 / 48.3 / 60.7 / 70.3 | 33.2 |
+| + one word model, two chips | 35.6 / 54.9 / 70.0 / 74.3 | 34.4 | 35.7 / 57.7 / 71.1 / 76.2 | 36.0 |
+| + third chip | 41.6 / 61.2 / 75.1 / 78.5 | 37.9 | 42.0 / 63.2 / 76.0 / 79.5 | 39.2 |
+| + line starts | 43.0 / 61.4 / 75.3 / 78.4 | 38.7 | 43.1 / 63.3 / 76.2 / 79.5 | 39.9 |
+| **+ word triples** | 43.4 / 61.7 / 75.3 / 78.4 | 39.0 | 43.6 / 63.6 / 76.2 / 79.5 | 40.3 |
+
+Whole log, before → after: the first chip holds the word after two letters 33.8 → 42.8 %; chips that do not extend
+a correctly typed prefix 9.9 → 4.6 %, made-up splits 0.9 → 0.3 %; next word top-1 / top-3 8.1 / 15.1 → 8.6 / 16.1;
+the first word of a burst is in the line-start row 11.6 % of the time (807 bursts); real typos in the row 13 of 14
+both times, in the first chip 11 → 12. Every constant was chosen on the first half of the log, the chat tune split
+and `tune-web-corpus.txt`; the second half and the eval set were only reported. The optimum is flat: `rowAlpha` 200
+to 3,000, `rowBeta` 0.5 to 50, the table weight 0.6 to 0.95 and the typo cost 1 to 3 all stay within a point on
+every column.
+
+Texts (one pass, learning on), before → after: row after two letters / presses saved / next word top-3.
+
+| text | before | after |
+|---|---|---|
+| `chat-corpus.txt` | 70.1 / 47.3 / 33.6 | 81.5 / 56.3 / 40.3 |
+| `tune-web-corpus.txt` | 66.5 / 50.7 / 32.6 | 76.5 / 58.2 / 39.8 |
+| `eval-corpus.txt` (report only) | 62.0 / 46.8 / 26.0 | 74.8 / 55.2 / 31.9 |
+
+Cost. `bench-typos.mjs` types every word with a typo and asks for the intended word first, as if the word were
+finished. Short typed strings that are also the start of common words now show completions first ("hou" for "you":
+hours / house / hour; "mot" for "not": mother / motion), so its row ranks drop: top-1 90.2 / 91.3 → 87.7 / 90.7
+(tune / held-out), top-3 98.1 / 98.1 → 95.0 / 94.4. Mid-word top-3 rises 83.2 → 84.9 on tune and stays 76.1 held-out;
+autocorrect on space is untouched (fixed 81.0 / 81.4, made wrong 2.3 / 0.6, clean and dictionary words 0), because
+`correct()` and `decode()` keep their prior. The 20 named cases and the 15 prefix cases still pass. The gate floors
+for those two ranks moved to the new values minus a point, and `gates.mjs` gained three checks per split on the chat
+corpus (row after two letters, presses saved, chips that do not extend a clean prefix) and 14 row cases (13 buffers and one next word that needs both previous words); the v9
+engine fails all seven new checks. 35 gates.
+
+Speed and size on the laptop: `suggest()` p95 while typing 9 to 12 letter words 1.77 → 1.74 ms; with a learn before every
+call, so that nothing is cached, one letter 1.2 ms p95, two to five letters under 0.7 ms. lm.js 2,333,024 →
+2,817,660 bytes; creating and warming the engine 99 → 116 ms over 44 idle steps, longest step 8.1 → 11.9 ms.
+
+Tried and not taken (same replay):
+
+- A cost of 1 on completions: typo-bench top-1 87.4 / 88.8 from 84.7 / 85.1 at that point, the log 0.2 to 0.3 points
+  worse on every column. The log decides.
+- A recency term (the last 30 to 1,000 learned words, weight 0.05 to 0.3): within 0.3 point everywhere.
+- No phrases among completions: +0.6 to +1.0 after three letters, but 52 phrase chips held the next word, and
+  presses saved comes out 37.8 against 38.0.
+- More next-word candidates (100 to 400 table followers, 40 to 100 most-typed and most frequent words): no change.
+- 50,000 and 100,000 triples: presses saved on the second half 39.8 for 25,000, 50,000 and 100,000; eval set 54.1 /
+  54.3 / 54.5 (measured before line-start chips were counted); 0.93 and 1.85 MB against 0.46 MB.
+- A rebuilt pair table (interpolated Kneser-Ney, all 211k pairs): on a static model without learning it adds 1.1
+  to 1.3 points of presses saved on the second half, half of it from a chat-weighted unigram. The pair-table share
+  in the base (`rowChat` 0.5) takes that part; the table itself stays, because the swipe and autocorrect gates are
+  tuned on it. A 4-gram level and a skip-bigram term added nothing measurable there.
+
+What limits it now is the distance between the generated chat lines and real chat, not table size. Measured on the
+log with the dictionary and the generated lines: 11.8 % of its words are not in the dictionary (a fifth of those are
+contractions typed without the apostrophe), 57 % of its adjacent word pairs occur in the generated lines at all
+(chat-corpus: 96 %), and a pair model gives 9.5 bits per word on the log against 6.3 on chat-corpus. Halving the
+generated text four times moves presses saved on a static trigram model from 37.3 to 35.3, so doubling it would add
+about half a point. `chat-corpus.txt` is not independent of the pair table: its lines average 2.6 words and 229 of
+the 357 occur verbatim among the 252k generated lines, so its numbers flatter every model; the log is the measure.
+What the keyboard learns from the user is worth more per word than any of it, which is why the last word before
+Enter is now logged and learned (above).

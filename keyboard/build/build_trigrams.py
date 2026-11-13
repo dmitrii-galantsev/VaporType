@@ -88,7 +88,7 @@ def count_triples(path, zipf, dmap, exclude):
             toks = line_tokens(line, dmap)
             total += max(0, len(toks) - 2)
             ok = [t if t in zipf else None for t in toks]
-            for a, b, c in zip(ok, ok[1:], ok[2:]):
+            for a, b, c in zip(ok, ok[1:], ok[2:], strict=False):
                 if a and b and c:
                     counts[(a, b, c)] += 1
     return counts, total
@@ -129,7 +129,7 @@ def mix(chat, chat_total, web, web_total, web_weight):
 def select(mixed, bigram, n, discount, min_count, keep):
     ctot = defaultdict(float)
     dmass = defaultdict(float)
-    for (a, b, c), v in mixed.items():
+    for (a, b, _), v in mixed.items():
         ctot[(a, b)] += v
         dmass[(a, b)] += min(v, discount)
     cands = []
@@ -174,7 +174,8 @@ def merge(path, text, n, discount):
     m = re.search(r'globalThis\.__oskLM = \{ version: (\d+), source: ("(?:[^"\\]|\\.)*"), text: ("(?:[^"\\]|\\.)*") \};', src)
     source = json.loads(m.group(2)).split(TRI_NOTE)[0]
     pairs = [line for line in json.loads(m.group(3)).split("\n") if line and line.count(" ") == 2]
-    note = f"{TRI_NOTE}{n} word triples a b c z10 from the same lines (build_trigrams.py: z10 = 10*log10(1e9 x P(c | a b)), absolute discount {discount:g})"
+    how = f"build_trigrams.py: z10 = 10*log10(1e9 x P(c | a b)), absolute discount {discount:g}"
+    note = f"{TRI_NOTE}{n} word triples a b c z10 from the same lines ({how})"
     body = "\n".join(pairs) + "\n" + text.rstrip("\n")
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"globalThis.__oskLM = {{ version: {MERGED_VERSION}, source: {json.dumps(source + note)}, text: {json.dumps(body)} }};\n")

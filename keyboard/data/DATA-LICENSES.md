@@ -7,7 +7,7 @@ Facts about the sources and their stated terms, collected on 2026-10-23. This is
 | file | built from | terms that apply |
 |---|---|---|
 | `words.js` (v4) | wordfreq 3.1.1 frequencies, filtered by SCOWL word lists; curated slang, brands and phrases written for this project; phrases mined from `chat-bigrams.txt` and `web-bigrams.txt` | CC BY-SA 4.0 (wordfreq data), with the SCOWL notices below |
-| `lm.js` (v4) | conditional probabilities from `chat-bigrams.txt` and `web-bigrams.txt` (weight 0.3), multiplied by wordfreq frequencies of the first word | CC BY-SA 4.0 (contains values derived from wordfreq data) |
+| `lm.js` (v6) | conditional probabilities from `chat-bigrams.txt` and `web-bigrams.txt` (weight 0.3), multiplied by wordfreq frequencies of the first word; plus 25,000 word triples counted by `build_trigrams.py` in the generated lines (`inputs/chat-lines.txt.xz`, `web-lines.txt.xz`, web weight 0.3), kept where they add most over the pair values | CC BY-SA 4.0 (contains values derived from wordfreq data) |
 | `chat-bigrams.txt`, `web-bigrams.txt` | word-pair counts from chat lines and from search/notes/email/forum/command lines generated locally by Qwen3.5-9B-Base | generated for this project; proposed CC0 1.0 |
 | `chat-corpus.txt`, `tune-web-corpus.txt`, `eval-corpus.txt`, `real-swipes.json`, `geometry.json` | written or recorded for this project | proposed CC0 1.0 |
 | code (`engine.js`, `build_words.py`, benches) | written for this project | the project's code license |

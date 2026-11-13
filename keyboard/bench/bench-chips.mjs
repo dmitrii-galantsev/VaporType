@@ -229,12 +229,16 @@ export const ROW_CASES = [
 ];
 
 export function rowCases(engine) {
-  return ROW_CASES.map(([buf, prev, never]) => {
+  const out = ROW_CASES.map(([buf, prev, never]) => {
     const { list, shown } = chips(engine, buf, { prev, keys: KEYS });
     const row = list.slice(0, shown);
     const ok = !!row[0] && plain(row[0]).startsWith(buf) && plain(row[0]) !== buf && !row.includes(never);
     return { buf, prev, ok, shown: row.join("/") };
   });
+  const two = engine.predict("lot of", 3).map((c) => c.key);
+  const one = engine.predict("of", 3).map((c) => c.key);
+  out.push({ buf: "lot of + next word", prev: null, ok: two.includes("people") && !one.includes("people"), shown: two.join("/") });
+  return out;
 }
 
 export function benchChips(engine, split) {

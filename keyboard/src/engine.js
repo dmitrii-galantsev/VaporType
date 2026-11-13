@@ -145,8 +145,12 @@
           let node = m.get(w1);
           if (!node) m.set(w1, (node = { tot: 0, m: new Map(), top: null }));
           const c = POW[z];
+          const w2 = text.slice(s1 + 1, s2);
           node.tot += c;
-          node.m.set(text.slice(s1 + 1, s2), c);
+          node.m.set(w2, c);
+          const inc = (m.inc ??= new Map());
+          inc.set(w2, (inc.get(w2) ?? 0) + c);
+          m.all = (m.all ?? 0) + c;
         }
       }
       i = e + 1;
@@ -344,15 +348,6 @@
       lm = lmPart;
       delete lm.next;
       lmPart = null;
-      let all = 0;
-      for (const node of lm.values())
-        for (const [w, c] of node.m) {
-          const e = entries.get(w);
-          if (!e) continue;
-          e.inc = (e.inc ?? 0) + c;
-          all += c;
-        }
-      if (all > 0) for (const e of entries.values()) if (e.inc) e.inc /= all;
       if (opt.phraseBigram)
         for (const e of entries.values()) {
           if (!e.phrase || e.removed) continue;
@@ -505,8 +500,8 @@
     function baseP(e) {
       if (!(e.z > 0)) return 0;
       if (e.bp === undefined) {
-        lmIndex();
-        e.bp = (1 - opt.rowChat) * Math.pow(10, e.z - 9) + opt.rowChat * (e.inc ?? 0);
+        const t = lmIndex();
+        e.bp = (1 - opt.rowChat) * Math.pow(10, e.z - 9) + (t.all ? (opt.rowChat * (t.inc.get(e.k) ?? 0)) / t.all : 0);
         e.bpRare = e.z < opt.rareZipf ? e.bp * Math.exp(-opt.rarePenalty * (opt.rareZipf - e.z)) : e.bp;
       }
       return e.c ? e.bp : e.bpRare;

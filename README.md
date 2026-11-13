@@ -52,14 +52,18 @@ Backspace right after a swipe deletes the whole word. Swiping also works with a 
 
 ![Tapping t-e-h: Space types "the" instead, and Backspace brings back "teh"](docs/media/autocorrect.gif)
 
-Click a pad on a key to type it, or touch the screen. The left word in the suggestion row is what you typed. When the
-middle one is blue, Space replaces your word with it. Backspace right after a correction puts back what you typed.
+Click a pad on a key to type it, or touch the screen. When the middle word in the suggestion row is blue, Space
+replaces your word with it, and the left one is what you typed: pick it to keep that. Backspace right after a
+correction puts back what you typed.
 
 ## Suggestions
 
 ![Typing "tom" and clicking "tomorrow" in the suggestion row](docs/media/suggest.gif)
 
 Pick a suggestion with a pad click, a touch, or the D-pad and A. It replaces the letters you typed and adds a space.
+While you are in the middle of a word all three are suggestions, and they lean toward the words and word pairs you
+type most. A word the keyboard does not know gets "+ add" on the left. After a space the row offers next words, and
+after Enter the words you usually start with.
 
 To pick without taking a thumb off the letters, set Input → **LB / RB** to **Pick words**. RB then types the
 suggestion marked RB and LB the one marked LB: while you type a word, RB is the middle suggestion; after a space, RB is
