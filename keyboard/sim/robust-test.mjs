@@ -182,8 +182,8 @@ async function mainBlock() {
       words.some((w) => w.startsWith("tap:lpl>lol:picked")) &&
       words.some((w) => /^swipe:>\w+:deleted>pool$/.test(w)) &&
       words.includes("tap:pool>pool:kept") &&
-      !words.some((w) => /secret/.test(w)),
-    "typing log: kept, autocorrect undone, picked, swipe deleted with the next word, Enter-ended word not logged",
+      recs.some((r) => r.type === "word" && r.committed === "secret" && r.how === "enter" && r.prev === "pool" && !r.lone),
+    "typing log: kept, autocorrect undone, picked, swipe deleted with the next word, last word of a multi-word line logged with how enter and prev",
     words,
   );
   const tapRec = recs.find((r) => r.type === "word" && r.kind === "tap" && r.committed === "pool");

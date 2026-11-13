@@ -119,6 +119,15 @@ async function privateBoundary() {
   await page.close();
 }
 
+const logRecs = async (h) => {
+  await h.F(() => window.__oskTrackpadFix.flushLog());
+  const raw = await h.F(() => window.__oskTrackpadFix.takeTypingLog());
+  return JSON.parse(raw ?? '{"lines":[]}')
+    .lines.map((l) => JSON.parse(l))
+    .filter((r) => r.type === "word" || r.type === "line")
+    .map((r) => (r.type === "line" ? "line" : `${r.committed}:${r.how}${r.lone ? ":lone" : ""}${r.prev ? `<${r.prev}` : ""}`));
+};
+
 async function enterEnded() {
   const { page } = await fresh();
   const h = helpers(page);
@@ -126,12 +135,6 @@ async function enterEnded() {
   const before = await h.user();
   await h.word("hello", "Enter");
   await h.word("hello", "Enter");
-  await h.F(() => {
-    const T = window.__oskTrackpadFix.tracker;
-    T.buf = "thank you";
-    T.lastOut = "word";
-  });
-  await h.tap("Enter");
   await h.word("good", null);
   await h.F(() => {
     window.__sim.vkm.SetVirtualKeyboardHidden();
@@ -145,8 +148,153 @@ async function enterEnded() {
   const bdiff = Object.keys(after.bigrams).filter((k) => after.bigrams[k] !== before.bigrams[k]);
   check(
     diff.length === 0 && bdiff.length === 0 && !(await h.F(() => window.__oskEngine.known("zqvxplor"))),
-    "Enter- or close-ended words (known word, phrase, a repeated password-like word) are not learned",
+    "a lone word ended by Enter (known word, repeated password-like word) and a word left in the buffer when the keyboard closes are not learned",
     { diff, bdiff },
+  );
+  await page.close();
+}
+
+async function enterLine() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  const before = await h.user();
+  await h.word("hello", "Enter");
+  await h.word("hello", "Enter");
+  for (let i = 0; i < 3; i++) await h.word("zqvxplor", "Enter");
+  const lone = await logRecs(h);
+  const after = await h.user();
+  const diff = Object.keys(after.words).filter((k) => JSON.stringify(after.words[k]) !== JSON.stringify(before.words[k]));
+  const bdiff = Object.keys(after.bigrams).filter((k) => after.bigrams[k] !== before.bigrams[k]);
+  check(
+    JSON.stringify(lone) === JSON.stringify(["hello:enter:lone", "hello:enter:lone", "line"]) &&
+      diff.length === 0 &&
+      bdiff.length === 0 &&
+      !(await h.F(() => window.__oskEngine.known("zqvxplor"))),
+    "lone words ended by Enter: a known word is logged with lone and not learned, an unknown word is neither logged nor learned, one line marker and never two in a row",
+    { lone, diff, bdiff },
+  );
+  await page.close();
+}
+
+async function enterLast() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("good");
+  await h.word("morning", "Enter");
+  await h.word("good");
+  await h.word("blorptank", "Enter");
+  const k1 = await h.F(() => window.__oskEngine.known("blorptank"));
+  await h.word("good");
+  await h.word("blorptank", "Enter");
+  const k2 = await h.F(() => window.__oskEngine.known("blorptank"));
+  const recs = await logRecs(h);
+  const u = await h.user();
+  check(
+    JSON.stringify(recs.slice(0, 2)) === JSON.stringify(["good:space", "morning:enter<good"]) &&
+      recs.includes("blorptank:enter<good") &&
+      !recs.includes("line") &&
+      !!u.bigrams["good morning"],
+    "the last word of a line ended by Enter is logged with its previous word and learned with its pair",
+    { recs, bigrams: Object.keys(u.bigrams) },
+  );
+  check(!k1 && k2, "an unknown last word of a line is learned on its second use, like a word ended by space", { k1, k2 });
+  await page.close();
+}
+
+async function stopEnded() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("are");
+  await h.word("you", ".");
+  await h.word("now");
+  const recs = await logRecs(h);
+  const u = await h.user();
+  check(
+    JSON.stringify(recs) === JSON.stringify(["are:space", "you:stop<are", "now:space"]) && !!u.bigrams["are you"] && !u.bigrams["you now"],
+    "a word ended by a full stop is logged with how stop and learned with its pair, and the next word has no pair with it",
+    { recs, bigrams: Object.keys(u.bigrams) },
+  );
+  await page.close();
+}
+
+async function staleLine() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("good", ".");
+  await h.F(() => {
+    window.__oskTrackpadFix.tracker.at = performance.now() - 60000;
+  });
+  await h.word("zqvxplor", "Enter");
+  const recs = await logRecs(h);
+  check(
+    recs.join() === "good:stop,line" && !(await h.F(() => window.__oskEngine.known("zqvxplor"))),
+    "after a pause the line starts over: a word typed alone then is a lone word even if a full stop ended the one before",
+    { recs },
+  );
+  await page.close();
+}
+
+async function lineMarker() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("good");
+  await h.word("morning");
+  await h.tap("Enter");
+  await h.tap("Enter");
+  await h.tap("Enter");
+  await h.word("good", "Enter");
+  await h.word("zq", "Enter");
+  await h.word("zq", "Enter");
+  const recs = await logRecs(h);
+  check(
+    JSON.stringify(recs) === JSON.stringify(["good:space", "morning:space<good", "line", "good:enter:lone", "line"]),
+    "Enter after typing that left no word record writes one line marker; Enter on an empty line or right after a marker writes none",
+    { recs },
+  );
+  await h.F(() => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    window.__oskTrackpadFix.tickNow();
+    window.__sim.vkm.SetVirtualKeyboardVisible();
+  });
+  await waitKeyboard(page);
+  await h.word("good", null);
+  await h.F(() => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    window.__oskTrackpadFix.tickNow();
+    window.__sim.vkm.SetVirtualKeyboardVisible();
+  });
+  await waitKeyboard(page);
+  const closed = await logRecs(h);
+  check(closed.length === recs.length, "a word left in the buffer when the keyboard closes is not logged", { closed });
+  await page.close();
+}
+
+async function enterPrivate() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.set("privateMode", true);
+  await h.word("good morning", "Enter");
+  await h.word("hello", "Enter");
+  await h.word("good", ".");
+  await h.set("privateMode", false);
+  const recs = await logRecs(h);
+  const u = await h.user();
+  check(
+    recs.length === 0 && !u.bigrams["good morning"] && !u.bigrams["morning hello"],
+    "private mode logs and learns nothing for words ended by Enter or a full stop",
+    { recs, bigrams: Object.keys(u.bigrams) },
   );
   await page.close();
 }
@@ -380,7 +528,21 @@ async function typingLogOff() {
   await page.close();
 }
 
-const blocks = [privateBoundary, enterEnded, forgetProtocol, otherLayout, consent, naming, typingLogOff];
+const blocks = [
+  privateBoundary,
+  enterEnded,
+  enterLine,
+  enterLast,
+  stopEnded,
+  staleLine,
+  lineMarker,
+  enterPrivate,
+  forgetProtocol,
+  otherLayout,
+  consent,
+  naming,
+  typingLogOff,
+];
 const guard = (f) =>
   f().catch((e) =>
     check(

@@ -44,6 +44,10 @@ let geo = null,
   last = 0;
 for (const r of rows) {
   if (r.type === "geo" && r.keys) geo = Object.fromEntries(Object.entries(r.keys).map(([k, [x, y, w, h]]) => [k, { x, y, w, h }]));
+  if (r.type === "line") {
+    prev = null;
+    continue;
+  }
   if (r.type !== "word") continue;
   if (r.t - last > 30000) prev = null;
   last = r.t;
@@ -82,7 +86,7 @@ for (const r of rows) {
       }
     }
   }
-  prev = word.split(" ").pop();
+  prev = r.how === "enter" || r.how === "stop" ? null : word.split(" ").pop();
 }
 const pct = (a, b) => (b ? ((100 * a) / b).toFixed(1) : "0.0");
 console.log(`words ${n.words}  kinds ${JSON.stringify(n.kinds)}`);

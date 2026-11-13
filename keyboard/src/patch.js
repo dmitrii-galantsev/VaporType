@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 35;
+  const VERSION = 36;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -312,6 +312,7 @@
     taps: [],
     fix: [],
     prev: null,
+    words: 0,
     lastOut: "unknown",
     auto: false,
     fromSwipe: null,
@@ -1339,22 +1340,43 @@
   function commitBuffer(how) {
     const w = T.buf;
     const swipe = T.fromSwipe;
-    const fromSwipe = !!swipe;
+    const line = T.words;
+    const lone = how === "enter" && line === 0 && !!w && !w.includes(" ");
+    let logged = false;
     if (w && how !== "end") {
       try {
-        logWord(w, swipe, how);
+        logged = logWord(w, swipe, how, lone);
       } catch (e) {
         note(e);
       }
+    }
+    if (how === "enter") {
+      if (!logged && (line > 0 || w)) {
+        try {
+          logLineEnd();
+        } catch (e) {
+          note(e);
+        }
+      }
+      T.words = 0;
+    } else if (w && how !== "end") {
+      T.words += w.split(" ").length;
     }
     T.buf = "";
     T.taps = [];
     T.fix = [];
     T.fromSwipe = null;
-    if (how === "end" || settings.privateMode) {
-      T.prev = how === "end" ? null : T.prev;
+    const boundary = how === "end" || how === "enter" || how === "stop";
+    if (how === "end" || lone || settings.privateMode) {
+      if (boundary) T.prev = null;
       return;
     }
+    learnWord(w, swipe);
+    if (boundary) T.prev = null;
+  }
+
+  function learnWord(w, swipe) {
+    const fromSwipe = !!swipe;
     const eng = getEngine();
     if (w && eng && w.includes(" ") && w.split(" ").every((x) => WORD_RE.test(x))) {
       let phrase = false;
@@ -1395,7 +1417,7 @@
       T.prev = w;
       return;
     }
-    let allowNew = !fromSwipe && (how === "space" || how === "punct" || how === "swipe");
+    let allowNew = !fromSwipe;
     try {
       const k = w.toLowerCase();
       if (allowNew && !eng.known(k)) {
@@ -1423,12 +1445,13 @@
     T.taps = [];
     T.fix = [];
     T.prev = null;
+    T.words = 0;
     T.fromSwipe = null;
     T.auto = false;
     T.lastOut = lastOut;
   }
 
-  const LOG = { out: [], seq: 0, acked: 0, staged: null, deleted: null, env: null, geo: null };
+  const LOG = { out: [], seq: 0, acked: 0, staged: null, deleted: null, env: null, geo: null, lineEnd: false };
   const REQ = { pending: {}, rev: 0, taken: 0, takes: 0, acks: 0, hostAcks: false };
 
   function request(kind) {
@@ -1489,10 +1512,13 @@
     }
   }
 
-  function logWord(w, swipe, how) {
-    if (settings.privateMode) return;
-    if (!/^[A-Za-z]+(?:'[A-Za-z]+)?(?: [A-Za-z]+(?:'[A-Za-z]+)?)*$/.test(w)) return;
+  function logWord(w, swipe, how, lone = false) {
+    if (settings.privateMode) return false;
+    if (!/^[A-Za-z]+(?:'[A-Za-z]+)?(?: [A-Za-z]+(?:'[A-Za-z]+)?)*$/.test(w)) return false;
+    if (lone && !getEngine()?.known(w.toLowerCase())) return false;
     const rec = { type: "word", t: Date.now(), how, committed: w, mode: settings.mode };
+    if (lone) rec.lone = true;
+    if (T.prev) rec.prev = T.prev;
     if (swipe?.rec) {
       Object.assign(rec, {
         kind: "swipe",
@@ -1516,9 +1542,18 @@
       if (pk && state.pickVia) rec.via = state.pickVia;
     }
     logStage(rec);
+    return true;
+  }
+
+  function logLineEnd() {
+    if (!eff("typingLog") || LOG.lineEnd) return;
+    flushLog();
+    logLine({ type: "line", t: Date.now() });
+    LOG.lineEnd = true;
   }
 
   function logStage(rec) {
+    LOG.lineEnd = false;
     flushStaged();
     if (LOG.deleted) {
       LOG.deleted.next = rec.committed;
@@ -1546,6 +1581,7 @@
 
   function logDeleted(f) {
     if (settings.privateMode) return;
+    LOG.lineEnd = false;
     flushStaged();
     if (LOG.deleted) logLine(LOG.deleted);
     LOG.deleted = f.rec
@@ -1642,7 +1678,7 @@
   }
 
   function pickByBumper(kb, side) {
-    if (T.at && performance.now() - T.at > STALE_MS && (T.buf || T.prev || T.fromSwipe || T.auto)) {
+    if (T.at && performance.now() - T.at > STALE_MS && (T.buf || T.prev || T.words || T.fromSwipe || T.auto)) {
       resetTracker();
       refreshSuggestions(kb);
       return false;
@@ -1756,7 +1792,7 @@
       const sep = T.autocorr.sep;
       undoAutocorrect(kb);
       sendText(kb, sep);
-      commitBuffer(sep === " " ? "space" : /[.!?]/.test(sep) ? "end" : "punct");
+      commitBuffer(sep === " " ? "space" : /[.!?]/.test(sep) ? "stop" : "punct");
       T.lastOut = sep === " " ? "space" : "punct";
       refreshSuggestions(kb);
       return;
@@ -1792,6 +1828,7 @@
       T.picked = null;
       const added = T.buf;
       T.prev = T.buf;
+      T.words++;
       T.buf = "";
       T.taps = [];
       T.fix = [];
@@ -1934,7 +1971,7 @@
     const auto = T.auto;
     T.auto = false;
     if (!layoutSupported()) {
-      if (T.buf || T.prev || T.fromSwipe) resetTracker();
+      if (T.buf || T.prev || T.words || T.fromSwipe) resetTracker();
       return;
     }
     if (TOGGLES.has(key) || key.startsWith("SwitchKeys_") || key === "VKMove" || key === "VKPaste") {
@@ -1961,16 +1998,17 @@
         T.lastOut = T.buf ? "word" : "unknown";
       } else {
         T.prev = null;
+        T.words = Math.max(0, T.words - 1);
         T.lastOut = "unknown";
       }
     } else if (key === " ") {
       commitBuffer("space");
       T.lastOut = "space";
     } else if (key === "Enter") {
-      commitBuffer("end");
+      commitBuffer("enter");
       T.lastOut = "unknown";
     } else if (/^[.,!?;:]$/.test(ch)) {
-      commitBuffer(/[.!?]/.test(ch) ? "end" : "punct");
+      commitBuffer(/[.!?]/.test(ch) ? "stop" : "punct");
       T.lastOut = "punct";
     } else if (key === "VKClose" || key === "VKDone") {
       commitBuffer("end");
@@ -3016,7 +3054,7 @@
     const kb = findKeyboard(e.currentTarget?.document);
     if (!kb?.m_keyboardDiv || kb.m_keyboardDiv.contains(e.target) || P.el?.contains(e.target)) return;
     echoReset(true);
-    if (T.buf || T.fromSwipe || T.prev) {
+    if (T.buf || T.fromSwipe || T.prev || T.words) {
       resetTracker();
       refreshSuggestions(kb);
     }
@@ -4831,7 +4869,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
             } catch (e) {
               note(e);
             }
-            if (T.at && performance.now() - T.at > STALE_MS && (T.buf || T.prev || T.fromSwipe || T.auto)) {
+            if (T.at && performance.now() - T.at > STALE_MS && (T.buf || T.prev || T.words || T.fromSwipe || T.auto)) {
               resetTracker();
               refreshSuggestions(this);
             }
