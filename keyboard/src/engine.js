@@ -1,5 +1,5 @@
 (function (root) {
-  const VERSION = 9;
+  const VERSION = 10;
   const DEFAULTS = {
     samples: 40,
     band: 0.15,
@@ -27,10 +27,6 @@
     ctxWeight: 2,
     phraseBigram: 1,
     denomBeta: 0.1,
-    predictUserBoost: 15,
-    predictFill: 1,
-    complUserBoost: 1,
-    complLM: 2,
     phrasePenalty: 0,
     lm: null,
     lengthRatio: [0.4, 2.5],
@@ -86,8 +82,6 @@
     sugCompletions: 8,
     sugComplCost: 2,
     sugComplPerLetter: 0.3,
-    sugCorrCost: 0,
-    sugSplitCost: 0,
     sugFuzzyMin: 3,
     sugFuzzyMaxCost: 4.5,
     sugFuzzyMaxCostLong: 4,
@@ -96,16 +90,30 @@
     sugKnownBonus: 2,
     sugScan: 20000,
     sugPrefixTop: 4,
+    rowAlpha: 1000,
+    rowBeta: 5,
+    rowBetaTypes: 1,
+    rowLambda: 0.8,
+    rowChat: 0.5,
+    rowTypoCost: 2,
+    rowSplitCost: 3,
+    rowFuzzyEdit: 0.25,
+    rowPhraseMin: 3,
+    rowPredictTop: 24,
   };
 
   const lowerKey = (w) => w.toLowerCase();
   const plainKey = (k) => k.replace(/[' ]/g, "");
-  const prevKey = (w) => {
-    if (!w) return null;
+  const prevKeys = (w) => {
+    if (!w) return [null, null];
     const parts = w.toLowerCase().split(/\s+/).filter(Boolean);
-    const k = (parts[parts.length - 1] ?? "").replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
-    return k || null;
+    const key = (i) => (parts[i] ?? "").replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "") || null;
+    const k = key(parts.length - 1);
+    return [k, k ? key(parts.length - 2) : null];
   };
+  const prevKey = (w) => prevKeys(w)[0];
+  const LN1E9 = Math.log(1e9);
+  const START = "^";
   const POW = new Float64Array(201);
   for (let i = 0; i <= 200; i++) POW[i] = Math.pow(10, i / 10);
 
@@ -118,7 +126,19 @@
       if (e < 0) e = text.length;
       const s1 = text.indexOf(" ", i),
         s2 = s1 < 0 ? -1 : text.indexOf(" ", s1 + 1);
-      if (s1 > i && s2 > s1 && s2 < e) {
+      const s3 = s2 < 0 ? -1 : text.indexOf(" ", s2 + 1);
+      if (s3 > s2 && s3 < e) {
+        const z = Math.round(+text.slice(s3 + 1, e));
+        if (z >= 0 && z <= 90) {
+          const tri = (m.tri ??= new Map());
+          const key = text.slice(i, s2);
+          let node = tri.get(key);
+          if (!node) tri.set(key, (node = { m: new Map(), rest: 1 }));
+          const p = POW[z] * 1e-9;
+          node.m.set(text.slice(s2 + 1, s3), p);
+          node.rest -= p;
+        }
+      } else if (s1 > i && s2 > s1 && s2 < e) {
         const w1 = text.slice(i, s1),
           z = Math.round(+text.slice(s2 + 1, e));
         if (z >= 0 && z <= 200) {
@@ -286,6 +306,8 @@
     let user = { version: 1, words: {}, bigrams: {} };
     let follow = null;
     let userTop = null;
+    let userN = -1;
+    const rowCache = new Map();
     let byEnds = null;
     let sorted = null;
     let plainSorted = null;
@@ -307,6 +329,7 @@
       plainSorted = null;
       plain = null;
       prefixCache.clear();
+      rowCache.clear();
       lastSearch = null;
     }
 
@@ -321,6 +344,15 @@
       lm = lmPart;
       delete lm.next;
       lmPart = null;
+      let all = 0;
+      for (const node of lm.values())
+        for (const [w, c] of node.m) {
+          const e = entries.get(w);
+          if (!e) continue;
+          e.inc = (e.inc ?? 0) + c;
+          all += c;
+        }
+      if (all > 0) for (const e of entries.values()) if (e.inc) e.inc /= all;
       if (opt.phraseBigram)
         for (const e of entries.values()) {
           if (!e.phrase || e.removed) continue;
@@ -430,8 +462,12 @@
           if (i < 0) continue;
           const a = b.slice(0, i);
           let m = follow.get(a);
-          if (!m) follow.set(a, (m = new Map()));
+          if (!m) {
+            follow.set(a, (m = new Map()));
+            m.tot = 0;
+          }
           m.set(b.slice(i + 1), c);
+          m.tot += c;
         }
       }
       return follow.get(pk);
@@ -441,16 +477,127 @@
       const bk = a + " " + w;
       if (c > 0) user.bigrams[bk] = c;
       else delete user.bigrams[bk];
+      rowCache.clear();
       if (!follow) return;
       let m = follow.get(a);
+      const old = m?.get(w) ?? 0;
       if (c > 0) {
-        if (!m) follow.set(a, (m = new Map()));
+        if (!m) {
+          follow.set(a, (m = new Map()));
+          m.tot = 0;
+        }
         m.set(w, c);
-      } else m?.delete(w);
+        m.tot += c - old;
+      } else if (m) {
+        m.delete(w);
+        m.tot -= old;
+      }
     }
 
-    function pairBoost(e, prev) {
-      return opt.predictUserBoost * Math.log(1 + (user.bigrams[prev + " " + e.first] ?? 0));
+    function userTotal() {
+      if (userN < 0) {
+        userN = 0;
+        for (const u of Object.values(user.words)) if (u?.c > 0) userN += u.c;
+      }
+      return userN;
+    }
+
+    function baseP(e) {
+      if (!(e.z > 0)) return 0;
+      if (e.bp === undefined) {
+        lmIndex();
+        e.bp = (1 - opt.rowChat) * Math.pow(10, e.z - 9) + opt.rowChat * (e.inc ?? 0);
+        e.bpRare = e.z < opt.rareZipf ? e.bp * Math.exp(-opt.rarePenalty * (opt.rareZipf - e.z)) : e.bp;
+      }
+      return e.c ? e.bp : e.bpRare;
+    }
+
+    function uniP(e) {
+      return (e.c + opt.rowAlpha * baseP(e)) / (userTotal() + opt.rowAlpha);
+    }
+
+    function rowCtx(prev, start, prev2) {
+      if (!prev && start) prev = START;
+      if (!prev) return null;
+      const cx = ctxFor(prev);
+      const fol = followers(prev);
+      const tri = (prev2 && lmIndex().tri?.get(prev2 + " " + prev)) || null;
+      return {
+        prev,
+        key: tri ? prev2 + " " + prev : prev,
+        node: cx.node,
+        denom: cx.denom,
+        tri,
+        fol,
+        folTot: fol?.tot ?? 0,
+        beta: opt.rowBeta + opt.rowBetaTypes * (fol?.size ?? 0),
+      };
+    }
+
+    function rowP(e, rc) {
+      const pu = uniP(e);
+      if (!rc) return pu;
+      const f = e.phrase ? entries.get(e.first) : e;
+      if (!f || f.removed) return pu;
+      const pf = e.phrase ? uniP(f) : pu;
+      let ps = pf;
+      if (rc.node) ps = (1 - opt.rowLambda) * pf + (opt.rowLambda * (rc.node.m.get(f.k) ?? 0)) / rc.denom;
+      if (rc.tri) ps = (rc.tri.m.get(f.k) ?? 0) + Math.max(0, rc.tri.rest) * ps;
+      const pa = ((rc.fol?.get(f.k) ?? 0) + rc.beta * ps) / (rc.folTot + rc.beta);
+      return e.phrase ? (pf > 0 ? (pu * pa) / pf : 0) : pa;
+    }
+
+    function rowScore(e, rc) {
+      const p = rowP(e, rc);
+      return p > 0 ? LN1E9 + Math.log(p) : -Infinity;
+    }
+
+    function rowCompletions(p, rc, m) {
+      const ck = p.length <= 2 ? m + ":" + p + ":" + (rc?.key ?? "") : null;
+      if (ck) {
+        const hit = rowCache.get(ck);
+        if (hit) return hit;
+      }
+      const top = [];
+      const seen = new Set();
+      const add = (e) => {
+        if (e.k === p || seen.has(e.k) || (e.phrase && p.length < opt.rowPhraseMin)) return;
+        seen.add(e.k);
+        const sc = rowP(e, rc);
+        if (!(sc > 0) || (top.length >= m && sc <= top[top.length - 1][0])) return;
+        let i = top.length;
+        while (i > 0 && top[i - 1][0] < sc) i--;
+        top.splice(i, 0, [sc, e]);
+        if (top.length > m) top.pop();
+      };
+      const range = (list, key, get) => {
+        let lo = 0,
+          hi = list.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (key(list[mid]) < p0) lo = mid + 1;
+          else hi = mid;
+        }
+        for (let i = lo; i < list.length && key(list[i]).startsWith(p0); i++) add(get(list[i]));
+      };
+      let p0 = p;
+      range(
+        sortedKeys(),
+        (e) => e.k,
+        (e) => e,
+      );
+      p0 = plainKey(p);
+      if (p0)
+        range(
+          plainKeys(),
+          (x) => x[0],
+          (x) => x[1],
+        );
+      if (ck) {
+        if (rowCache.size > 2000) rowCache.clear();
+        rowCache.set(ck, top);
+      }
+      return top;
     }
 
     function setGeometry(keys) {
@@ -836,43 +983,35 @@
       return out.slice(0, n);
     }
 
-    function predict(prev0, n = 3) {
-      const prev = prevKey(prev0);
-      if (!prev) return [];
+    function predict(prev0, n = 3, start = false) {
+      const [prev, prev2] = prevKeys(prev0);
+      if (!prev && !start) return [];
+      const rc = rowCtx(prev, start, prev2);
       const seen = new Set();
       const out = [];
       const add = (e) => {
         if (!e || e.removed || e.phrase || seen.has(e.k)) return;
         seen.add(e.k);
-        out.push({ word: e.d, key: e.k, score: logPrior(e, prev, 1) + pairBoost(e, prev) });
+        const score = rowScore(e, rc);
+        if (score > -Infinity) out.push({ word: e.d, key: e.k, score });
       };
-      for (const k of followers(prev)?.keys() ?? []) add(entries.get(k));
-      const fill = () => {
-        if (!userTop)
-          userTop = Object.entries(user.words)
-            .sort((a, b) => b[1].c - a[1].c)
-            .slice(0, 8)
-            .map((x) => x[0]);
-        const extra = [];
-        for (const k of userTop) {
-          const e = entries.get(k);
-          if (!e || e.removed || e.phrase || seen.has(k)) continue;
-          seen.add(k);
-          extra.push({ word: e.d, key: k, score: -Infinity });
-        }
-        return extra;
-      };
-      const node = ctxFor(prev).node;
-      if (node) {
-        if (!node.top)
-          node.top = [...node.m.entries()]
+      for (const k of rc.fol?.keys() ?? []) add(entries.get(k));
+      for (const k of rc.tri?.m.keys() ?? []) add(entries.get(k));
+      if (rc.node) {
+        if (!rc.node.top)
+          rc.node.top = [...rc.node.m.entries()]
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 24)
+            .slice(0, opt.rowPredictTop)
             .map((x) => x[0]);
-        for (const k of node.top) add(entries.get(k));
+        for (const k of rc.node.top) add(entries.get(k));
       }
+      if (!userTop)
+        userTop = Object.entries(user.words)
+          .sort((a, b) => b[1].c - a[1].c)
+          .slice(0, 8)
+          .map((x) => x[0]);
+      for (const k of userTop) add(entries.get(k));
       out.sort((x, y) => y.score - x.score);
-      if (opt.predictFill && out.length < n) out.push(...fill());
       return out.slice(0, n);
     }
 
@@ -1076,7 +1215,7 @@
               const c = opt.spaceCost + restoreCost(a) + restoreCost(b);
               const key = a.k + " " + b.k;
               if (entries.has(key)) continue;
-              consider({ k: key, d: a.d + " " + b.d }, pa + lp(b, a.k) - 9 * Math.LN10 - c, c);
+              consider({ k: key, d: a.d + " " + b.d, a, b }, pa + lp(b, a.k) - 9 * Math.LN10 - c, c);
             }
           }
         }
@@ -1190,48 +1329,35 @@
     function suggest(buf, ctx = {}, n = 3) {
       if (typeof buf !== "string") return [];
       const raw = buf.trim();
-      if (!raw) return predict(ctx.prev, n).map((c) => ({ ...c, kind: "completion" }));
+      if (!raw) return predict(ctx.prev, n, ctx.start).map((c) => ({ ...c, kind: "completion" }));
       const k = lowerKey(raw);
+      const pk = plainKey(k);
       const shape = (w) => (raw[0] !== raw[0].toLowerCase() && w[0] === w[0].toLowerCase() ? w[0].toUpperCase() + w.slice(1) : w);
-      const prev = prevKey(ctx.prev);
-      const lp = (e) => logPrior(e, prev, opt.corrCtxWeight);
+      const [prev, prev2] = prevKeys(ctx.prev);
+      const rc = rowCtx(prev, ctx.start, prev2);
       const out = new Map();
       const put = (e, score, kind) => {
-        if (!e || e.removed || (e.z <= 0 && !e.c)) return;
+        if (!e || e.removed || (e.z <= 0 && !e.c) || !(score > -Infinity)) return;
         const cur = out.get(e.k);
         if (!cur || cur.score < score) out.set(e.k, { word: shape(e.d), key: e.k, score, kind });
       };
       const eT = entries.get(k);
       const knownT = eT && !eT.removed ? eT : null;
       const protect = !!knownT && (knownT.c > 0 || knownT.z >= opt.protectZipf);
-      const compl = (e, extra) =>
-        lp(e) + (prev ? opt.complUserBoost * pairBoost(e, prev) : 0) - opt.sugComplCost - opt.sugComplPerLetter * Math.max(0, extra);
-      const own = [
-        ...(k.length <= 2 ? prefixTop(k, opt.sugCompletions) : complete(raw, ctx, opt.sugCompletions).map((c) => entries.get(c.key))),
-      ];
-      if (prev && opt.complUserBoost) for (const w of followers(prev)?.keys() ?? []) if (w.startsWith(k)) own.push(entries.get(w));
-      if (prev && opt.complLM && k.length <= 2) {
-        const node = ctxFor(prev).node;
-        if (node) {
-          const top = [];
-          for (const [w, c] of node.m) if (w.startsWith(k)) top.push([c, w]);
-          top.sort((a, b) => b[0] - a[0]);
-          for (const [, w] of top.slice(0, opt.complLM)) own.push(entries.get(w));
-        }
-      }
-      for (const e of own) if (e && e.k !== k) put(e, compl(e, plainKey(e.k).length - plainKey(k).length), "completion");
-      let typedScore = knownT ? lp(knownT) : -Infinity;
-      const plain =
-        /^[A-Za-z']+$/.test(raw) &&
-        plainKey(k).length >= 2 &&
-        plainKey(k).length <= 24 &&
-        !(raw === raw.toUpperCase() && /[A-Z]{2}/.test(raw));
+      for (const [p, e] of rowCompletions(k, rc, opt.sugCompletions)) put(e, LN1E9 + Math.log(p), "completion");
+      let typedScore = knownT ? rowScore(knownT, rc) : -Infinity;
+      const plain = /^[A-Za-z']+$/.test(raw) && pk.length >= 2 && pk.length <= 24 && !(raw === raw.toUpperCase() && /[A-Z]{2}/.test(raw));
       if (plain) {
         const S = search(raw, ctx);
-        typedScore = S.typedScore;
-        const P = prefixInfo(S, k);
-        for (const r of S.ranked)
-          put(r.e, P.adj(r) - opt.sugCorrCost * r.cost - (r.e.z === undefined ? opt.sugSplitCost : 0), "correction");
+        if (!knownT) typedScore = S.typedScore - opt.rowTypoCost;
+        for (const r of S.ranked) {
+          if (r.e.a) {
+            const pa = rowP(r.e.a, rc),
+              pb = rowP(r.e.b, rowCtx(r.e.a.k));
+            if (pa > 0 && pb > 0) put(r.e, LN1E9 + Math.log(pa) + Math.log(pb) - r.cost - opt.rowSplitCost, "correction");
+          } else if (plainKey(r.e.k).length > 1)
+            put(r.e, rowScore(r.e, rc) - r.cost - (plainKey(r.e.k) === S.s0 ? 0 : opt.rowTypoCost), "correction");
+        }
         if (!protect && S.s0.length >= opt.sugFuzzyMin) {
           const s0 = S.s0,
             list = sortedKeys();
@@ -1259,7 +1385,7 @@
             while (d < str.length && str[d] === s0[d]) d++;
             if (d > reach) continue;
             for (const e of prefixTop(str))
-              put(e, compl(e, plainKey(e.k).length - str.length) - opt.sugCorrCost * cost - opt.sugFuzzyCost, "correction");
+              put(e, rowScore(e, rc) - opt.rowFuzzyEdit * cost - opt.sugFuzzyCost - opt.rowTypoCost, "correction");
           }
         }
       }
@@ -1316,7 +1442,7 @@
       return !!e && !e.removed;
     }
 
-    function learn(word, prev, { allowNew = true } = {}) {
+    function learn(word, prev, { allowNew = true, start = false } = {}) {
       lastSearch = null;
       const k = lowerKey(word);
       let e = entries.get(k);
@@ -1332,6 +1458,8 @@
       }
       e.c += 1;
       userTop = null;
+      userN = -1;
+      rowCache.clear();
       const u = (user.words[k] ??= { c: 0, d: e.d });
       u.c = e.c;
       if (e.z === 0 && word !== e.d && word.toLowerCase() === k) {
@@ -1342,6 +1470,7 @@
       }
       const pk = prevKey(prev);
       if (pk && entries.has(pk)) setPair(pk, e.first, (user.bigrams[pk + " " + e.first] ?? 0) + 1);
+      else if (!pk && start) setPair(START, e.first, (user.bigrams[START + " " + e.first] ?? 0) + 1);
       return true;
     }
 
@@ -1351,6 +1480,8 @@
       const e = entries.get(k);
       if (!e) return;
       e.c = Math.max(0, e.c - 1);
+      userN = -1;
+      rowCache.clear();
       if (user.words[k]) {
         user.words[k].c = e.c;
         if (!e.c) delete user.words[k];
@@ -1369,6 +1500,8 @@
       const k = lowerKey(word);
       const e = entries.get(k);
       delete user.words[k];
+      userN = -1;
+      rowCache.clear();
       for (const b of Object.keys(user.bigrams)) if (b.startsWith(k + " ") || b.endsWith(" " + k)) delete user.bigrams[b];
       follow = null;
       userTop = null;
@@ -1402,6 +1535,7 @@
       user = { version: 1, words: { ...(data.words ?? {}) }, bigrams: { ...(data.bigrams ?? {}) } };
       follow = null;
       userTop = null;
+      userN = -1;
       invalidate();
     }
 

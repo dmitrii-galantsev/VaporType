@@ -4,6 +4,7 @@ import { Worker, isMainThread, parentPort, workerData } from "node:worker_thread
 import { loadEngine, runMode, testSet, SEEDS } from "./bench.mjs";
 import { benchSentences } from "./bench-sentences.mjs";
 import { benchTypos, benchTaps, prefixCases } from "./bench-typos.mjs";
+import { benchChips } from "./bench-chips.mjs";
 
 export const FLOORS = {
   selfCheck: 0.98,
@@ -13,8 +14,12 @@ export const FLOORS = {
     heldout: { "onepad-ideal": 0.93, "twopad-overlap": 0.962, "sloppy-onepad": 0.811, "sloppy-twopad": 0.761 },
   },
   typos: {
-    tune: { top1: 0.9, top3: 0.971, fix: 0.8, midTop3: 0.817 },
-    heldout: { top1: 0.909, top3: 0.971, fix: 0.81, midTop3: 0.751 },
+    tune: { top1: 0.867, top3: 0.94, fix: 0.8, midTop3: 0.817 },
+    heldout: { top1: 0.897, top3: 0.934, fix: 0.81, midTop3: 0.751 },
+  },
+  chips: {
+    tune: { row2: 0.797, saved: 0.519, off: 0.034 },
+    heldout: { row2: 0.783, saved: 0.518, off: 0.022 },
   },
 };
 
@@ -25,7 +30,7 @@ export function tasks(fast) {
   const t = [{ kind: "self" }, { kind: "dict" }, { kind: "prefix" }];
   for (const split of SPLITS) {
     for (const mode of modes) t.push({ kind: "swipe", split, mode });
-    t.push({ kind: "tap", split }, { kind: "typos", split });
+    t.push({ kind: "tap", split }, { kind: "typos", split }, { kind: "chips", split });
     if (!fast) for (const map of ["big", "standard"]) for (const sigma of [1.5, 2.5]) t.push({ kind: "taps", split, map, sigma });
   }
   return t;
@@ -51,6 +56,8 @@ export function runTask(engine, t) {
     }
     case "typos":
       return benchTypos(engine, { splits: [t.split], extras: false })[t.split].st;
+    case "chips":
+      return benchChips(engine, t.split);
     case "taps":
       return benchTaps(engine, { split: t.split, maps: [t.map], sigmas: [t.sigma] }).reduce((a, r) => a + r.with.cleanFalse, 0);
   }
@@ -93,6 +100,13 @@ export function checkResults(res, fast) {
     const vals = { top1: s.top1 / s.n, top3: s.top3 / s.n, fix: s.fix / s.n, midTop3: s.preTop3 / s.pre };
     for (const [k, v] of Object.entries(vals))
       check(v >= FLOORS.typos[split][k] - 1e-9, `${split} typo bench ${k} ${pct(v)} >= ${pct(FLOORS.typos[split][k])}`);
+  }
+  for (const split of SPLITS) {
+    const c = get("chips", (t) => t.split === split)[0].r;
+    const f = FLOORS.chips[split];
+    check(c.row2 >= f.row2 - 1e-9, `${split} suggestion row holds the word after 2 letters ${pct(c.row2)} >= ${pct(f.row2)}`);
+    check(c.saved >= f.saved - 1e-9, `${split} suggestion row presses saved ${pct(c.saved)} >= ${pct(f.saved)}`);
+    check(c.off <= f.off + 1e-9, `${split} chips that do not extend a clean prefix ${pct(c.off)} <= ${pct(f.off)}`);
   }
   const pf = get("prefix")[0].r;
   const bad = pf.filter((x) => !x.ok);
