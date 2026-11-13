@@ -14,6 +14,13 @@ export function readLogs(files) {
     for (const line of fs.readFileSync(f, "utf8").split("\n")) {
       if (!line) continue;
       const r = JSON.parse(line);
+      if (r.type === "line") {
+        const lid = r.t + " line";
+        if (seen.has(lid)) continue;
+        seen.add(lid);
+        out.push(r);
+        continue;
+      }
       if (r.type !== "word" || !r.committed) continue;
       const id = r.t + " " + r.committed;
       if (seen.has(id)) continue;
@@ -66,11 +73,15 @@ export function replay(engine, recs, { keys = KEYS, since = 0 } = {}) {
   const n = { words: 0, ctx: 0, p1: 0, p3: 0, c1n: 0, c1: 0, c2n: 0, c2: 0, presses: 0, cost: 0, rep: 0, r3: 0, rc1: 0, rc1n: 0 };
   const pairs = new Set();
   const half = { ...n };
-  const scored = recs.filter((r) => r.t >= since);
+  const scored = recs.filter((r) => r.t >= since && r.type !== "line");
   const nh = recs.indexOf(scored[scored.length >> 1]);
   let prev = null,
     last = -Infinity;
   recs.forEach((r, ri) => {
+    if (r.type === "line") {
+      prev = null;
+      return;
+    }
     if (r.outcome === "deleted") return;
     if (r.t - last > STALE_MS) prev = null;
     last = r.t;
@@ -111,8 +122,9 @@ export function replay(engine, recs, { keys = KEYS, since = 0 } = {}) {
         if (ri >= nh) tally(half);
       }
       let learn = true,
-        allowNew = !multi && !fromSwipe && (r.how === "space" || r.how === "punct" || r.how === "swipe");
-      if (fromSwipe && r.outcome !== "picked") {
+        allowNew = !multi && !fromSwipe && ["space", "punct", "swipe", "stop", "enter"].includes(r.how);
+      if (r.lone) learn = false;
+      if (learn && fromSwipe && r.outcome !== "picked") {
         const inf = engine.info(w);
         if (inf && !(inf.c > 0) && (inf.z ?? 0) < LEARN_SWIPE_ZIPF) learn = false;
       }
@@ -127,6 +139,7 @@ export function replay(engine, recs, { keys = KEYS, since = 0 } = {}) {
       if (prev) pairs.add(prev.toLowerCase() + " " + target);
       prev = w;
     }
+    if (r.how === "enter" || r.how === "stop") prev = null;
   });
   return { all: n, late: half };
 }

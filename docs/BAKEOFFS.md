@@ -624,6 +624,16 @@ default, and a saved "off" stays Off. The log could not show how often a tap mis
 a word left no trace. Tapped words now carry `erased`, the letters Backspace removed with their tap positions, and
 bumper picks carry `via`, so the next review can measure tap misses and whether Pick words gets used.
 
+2026-11-12 (keyboard v36): the log had no line boundaries and lacked the last word of every message and every word
+before `.`, `!` or `?`, because Enter and those marks ended a word without logging or learning it. In chat that is one
+word in each message. The privacy rule now covers the lone word of a line instead of every Enter-ended word. A word
+ended by `.`, `!` or `?` is logged with `how: "stop"` and learned like one ended by a comma. A word ended by Enter on a
+line that already had a word is logged with `how: "enter"` and learned like one ended by a space. The only word of a
+line is never learned; it is logged (`lone: true`) only if the engine already knows it. When Enter ends a line that
+left no word record, a `{type: "line"}` record is written, at most once between two words, and every word record
+carries `prev`, the previous word the engine used. `bench-predict.mjs` and `bench-log.mjs` read these records and reset
+the previous word after `enter`, `stop` and `line`; logs written before v36 replay to the same numbers as before.
+
 ## Space bar width with the Win key (keyboard v34)
 
 The Win key (v33) took one more of Steam's 8.2 %-wide keys from the bottom row, and the space bar is the row's only
