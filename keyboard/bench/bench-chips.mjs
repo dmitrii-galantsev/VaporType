@@ -81,7 +81,7 @@ function blank() {
 export function replay(
   engine,
   recs,
-  { keys = KEYS, since = 0, legacy = false, dump = null, context = 1, part = null, starts = true } = {},
+  { keys = KEYS, since = 0, legacy = false, dump = null, context = 2, part = null, starts = true } = {},
 ) {
   const pending = {};
   const n = blank();
@@ -133,7 +133,6 @@ export function replay(
           else n.first++;
           const p = engine.predict(ctx.prev, 3, ctx.start).map((c) => c.key);
           if (!prev && p.includes(target)) n.first3++;
-          if (!prev) p.length = 0;
           if (p[0] === target) n.p1++;
           if (p.includes(target)) (n.p3++, (got2 = got3 = gots = 1));
         }
@@ -213,6 +212,31 @@ export function replay(
   return n;
 }
 
+export const ROW_CASES = [
+  ["wa", null, "a"],
+  ["ra", null, "a"],
+  ["sp", null, "so"],
+  ["spo", null, "so"],
+  ["thei", "no", "the i"],
+  ["assis", "my", "ass is"],
+  ["inve", "is", "nice"],
+  ["offi", null, "off i"],
+  ["pi", "take", "i"],
+  ["playin", "aint", ""],
+  ["thinki", "was", ""],
+  ["ther", null, ""],
+  ["hou", null, ""],
+];
+
+export function rowCases(engine) {
+  return ROW_CASES.map(([buf, prev, never]) => {
+    const { list, shown } = chips(engine, buf, { prev, keys: KEYS });
+    const row = list.slice(0, shown);
+    const ok = !!row[0] && plain(row[0]).startsWith(buf) && plain(row[0]) !== buf && !row.includes(never);
+    return { buf, prev, ok, shown: row.join("/") };
+  });
+}
+
 export function benchChips(engine, split) {
   const recs = [];
   let t = 0;
@@ -257,7 +281,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const logs = (process.env.OSK_TYPING_LOG ?? "").split(/[:,]/).filter(Boolean);
   if (!text && !logs.length) {
     console.error(
-      "usage: OSK_TYPING_LOG=<log.jsonl>[:<log.jsonl>...] [OSK_LOG_SINCE=2026-10-24] node bench-chips.mjs [--engine <engine.js>] [--opt k=v,...] [--legacy] [--context 2] [--dump <out.json>] [--misses]\n" +
+      "usage: OSK_TYPING_LOG=<log.jsonl>[:<log.jsonl>...] [OSK_LOG_SINCE=2026-10-24] node bench-chips.mjs [--engine <engine.js>] [--opt k=v,...] [--legacy] [--context 1] [--dump <out.json>] [--misses]\n" +
         "       node bench-chips.mjs --text corpora/chat-corpus.txt [--passes 1]",
     );
     process.exit(2);
@@ -280,7 +304,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     since,
     legacy: args.includes("--legacy"),
     dump,
-    context: Number(get("--context") ?? 1),
+    context: Number(get("--context") ?? 2),
     part: get("--part") ?? null,
     starts: !args.includes("--no-start"),
   });

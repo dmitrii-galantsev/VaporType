@@ -4,7 +4,7 @@ import { Worker, isMainThread, parentPort, workerData } from "node:worker_thread
 import { loadEngine, runMode, testSet, SEEDS } from "./bench.mjs";
 import { benchSentences } from "./bench-sentences.mjs";
 import { benchTypos, benchTaps, prefixCases } from "./bench-typos.mjs";
-import { benchChips } from "./bench-chips.mjs";
+import { benchChips, rowCases } from "./bench-chips.mjs";
 
 export const FLOORS = {
   selfCheck: 0.98,
@@ -18,8 +18,8 @@ export const FLOORS = {
     heldout: { top1: 0.897, top3: 0.934, fix: 0.81, midTop3: 0.751 },
   },
   chips: {
-    tune: { row2: 0.797, saved: 0.519, off: 0.034 },
-    heldout: { row2: 0.783, saved: 0.518, off: 0.022 },
+    tune: { row2: 0.801, saved: 0.547, off: 0.034 },
+    heldout: { row2: 0.783, saved: 0.528, off: 0.022 },
   },
 };
 
@@ -27,7 +27,7 @@ const SPLITS = ["tune", "heldout"];
 
 export function tasks(fast) {
   const modes = fast ? ["sloppy-onepad", "sloppy-twopad"] : Object.keys(FLOORS.swipe.tune);
-  const t = [{ kind: "self" }, { kind: "dict" }, { kind: "prefix" }];
+  const t = [{ kind: "self" }, { kind: "dict" }, { kind: "prefix" }, { kind: "row" }];
   for (const split of SPLITS) {
     for (const mode of modes) t.push({ kind: "swipe", split, mode });
     t.push({ kind: "tap", split }, { kind: "typos", split }, { kind: "chips", split });
@@ -56,6 +56,8 @@ export function runTask(engine, t) {
     }
     case "typos":
       return benchTypos(engine, { splits: [t.split], extras: false })[t.split].st;
+    case "row":
+      return rowCases(engine);
     case "chips":
       return benchChips(engine, t.split);
     case "taps":
@@ -113,6 +115,12 @@ export function checkResults(res, fast) {
   check(
     !bad.length,
     `prefix cases (mid-word lookalikes) ${pf.length - bad.length}/${pf.length}${bad.map((x) => ` ${x.buf}: ${x.shown} corr ${x.corr}`).join("")}`,
+  );
+  const rw = get("row")[0].r;
+  const rbad = rw.filter((x) => !x.ok);
+  check(
+    !rbad.length,
+    `row cases (a completion first, no lookalike or made-up split) ${rw.length - rbad.length}/${rw.length}${rbad.map((x) => ` ${x.buf}: ${x.shown}`).join("")}`,
   );
   if (!fast)
     for (const split of SPLITS) {

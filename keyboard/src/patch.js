@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 36;
+  const VERSION = 37;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -312,6 +312,9 @@
     taps: [],
     fix: [],
     prev: null,
+    prev2: null,
+    prev2For: null,
+    start: true,
     words: 0,
     lastOut: "unknown",
     auto: false,
@@ -1367,15 +1370,28 @@
     T.fix = [];
     T.fromSwipe = null;
     const boundary = how === "end" || how === "enter" || how === "stop";
+    const start = T.start;
+    if (how === "enter") T.start = true;
+    else if (w) T.start = false;
     if (how === "end" || lone || settings.privateMode) {
       if (boundary) T.prev = null;
       return;
     }
-    learnWord(w, swipe);
+    learnWord(w, swipe, start);
     if (boundary) T.prev = null;
   }
 
-  function learnWord(w, swipe) {
+  function setPrev(w) {
+    T.prev2 = T.prev;
+    T.prev = w;
+    T.prev2For = w;
+  }
+
+  function ctxPrev() {
+    return T.prev && T.prev2 && T.prev2For === T.prev ? `${T.prev2} ${T.prev}` : T.prev;
+  }
+
+  function learnWord(w, swipe, start) {
     const fromSwipe = !!swipe;
     const eng = getEngine();
     if (w && eng && w.includes(" ") && w.split(" ").every((x) => WORD_RE.test(x))) {
@@ -1388,8 +1404,8 @@
       const parts = phrase ? [w] : w.split(" ");
       try {
         for (const part of parts) {
-          if (eff("learn")) eng.learn(part, T.prev, { allowNew: false });
-          T.prev = part;
+          if (eff("learn")) eng.learn(part, T.prev, { allowNew: false, start: start && !T.prev });
+          setPrev(part);
         }
         if (eff("learn")) userChanged();
       } catch (e) {
@@ -1409,12 +1425,12 @@
         note(e);
       }
       if (inf && !(inf.c > 0) && (inf.z ?? 0) < LEARN_SWIPE_ZIPF) {
-        T.prev = w;
+        setPrev(w);
         return;
       }
     }
     if (!eff("learn")) {
-      T.prev = w;
+      setPrev(w);
       return;
     }
     let allowNew = !fromSwipe;
@@ -1425,11 +1441,11 @@
         allowNew = state.pending[k] >= NEW_WORD_USES;
         if (allowNew) delete state.pending[k];
       }
-      if (eng.learn(w, T.prev, { allowNew })) userChanged();
+      if (eng.learn(w, T.prev, { allowNew, start: start && !T.prev })) userChanged();
     } catch (e) {
       note(e);
     }
-    T.prev = w;
+    setPrev(w);
   }
 
   function resetTracker(lastOut = "unknown", flush = true) {
@@ -1445,6 +1461,7 @@
     T.taps = [];
     T.fix = [];
     T.prev = null;
+    T.start = false;
     T.words = 0;
     T.fromSwipe = null;
     T.auto = false;
@@ -1732,7 +1749,7 @@
       const lower = T.buf.toLowerCase();
       let raw = [];
       try {
-        raw = eng.suggest(T.buf, { prev: T.prev, keys: letterKeys(kb), taps: tapsCtx() }, 8) ?? [];
+        raw = eng.suggest(T.buf, { prev: ctxPrev(), start: T.start && !T.prev, keys: letterKeys(kb), taps: tapsCtx() }, 8) ?? [];
       } catch (e) {
         note(e);
       }
@@ -1756,11 +1773,14 @@
       return setSuggestions(kb, items, "complete", applies ? 1 : -1);
     }
     if (T.autocorr && !T.buf) {
-      const p = eng.predict?.(T.prev, 8)?.filter(notBlocked) ?? [];
+      const p = eng.predict?.(ctxPrev(), 8)?.filter(notBlocked) ?? [];
       return setSuggestions(kb, [{ word: T.autocorr.from, label: `↶ ${T.autocorr.from}`, undo: true }, p[0], p[1]], "predict");
     }
     if (T.prev && T.lastOut === "space") {
-      return setSuggestions(kb, slot(eng.predict(T.prev, 8).filter(notBlocked).slice(0, 3)), "predict");
+      return setSuggestions(kb, slot(eng.predict(ctxPrev(), 8).filter(notBlocked).slice(0, 3)), "predict");
+    }
+    if (T.start && !T.prev && T.lastOut === "unknown") {
+      return setSuggestions(kb, slot(eng.predict(null, 8, true).filter(notBlocked).slice(0, 3)), "predict");
     }
     setSuggestions(kb, [], null);
   }
@@ -1812,7 +1832,7 @@
     } else if (T.mode === "complete" && T.buf && item.add) {
       const eng = getEngine();
       try {
-        eng?.learn(T.buf, T.prev, { allowNew: true });
+        eng?.learn(T.buf, T.prev, { allowNew: true, start: T.start && !T.prev });
         delete state.pending[T.buf.toLowerCase()];
         userChanged();
       } catch (e) {
@@ -1827,7 +1847,8 @@
       }
       T.picked = null;
       const added = T.buf;
-      T.prev = T.buf;
+      setPrev(T.buf);
+      T.start = false;
       T.words++;
       T.buf = "";
       T.taps = [];
@@ -5459,6 +5480,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
         T.labels = [];
         T.sugs = [];
       }
+      T.start = true;
     }
     try {
       renderEcho(open[0]);

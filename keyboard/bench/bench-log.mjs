@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { loadEngine } from "./bench.mjs";
+import { chips as chipRow } from "./bench-chips.mjs";
 
 const file = process.env.OSK_TYPING_LOG;
 if (!file) {
@@ -21,20 +22,8 @@ const WORD = /^[A-Za-z']+$/;
 const upper = (s) => s.length > 1 && s === s.toUpperCase() && /[A-Z]{2}/.test(s);
 
 function chips(buf, ctx) {
-  const seen = new Set([buf.toLowerCase()]);
-  const list = [];
-  const c = engine.correct(buf, ctx);
-  if (c?.word && !seen.has(c.word.toLowerCase())) {
-    list.push(c.word.toLowerCase());
-    seen.add(c.word.toLowerCase());
-  }
-  for (const s of engine.suggest(buf, ctx, 6)) {
-    const k = s.word.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    list.push(k);
-  }
-  return list.slice(0, 2);
+  const { list, shown } = chipRow(engine, buf, ctx);
+  return list.slice(0, shown);
 }
 
 const n = { words: 0, kinds: {}, outcomes: {}, presses: 0, saved: 0, mid: 0, savedMid: 0, either: 0, savedEither: 0 };

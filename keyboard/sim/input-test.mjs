@@ -672,6 +672,17 @@ await scenario(
 
 await padTap("R", " ");
 await scenario(
+  "mid-word the left slot holds a third word: wh shows three words that start with wh, and picking the left one types it",
+  async () => {
+    for (const k of "wh") await padTap("R", k);
+    await settle(page);
+    const row = await labels();
+    await padTap("L", "OSKSug_0");
+    return { row };
+  },
+  (o, s, x) => x.row.length === 3 && new Set(x.row).size === 3 && x.row.every((w) => /^wh[a-z']+$/.test(w)) && o === `wh⌫⌫${x.row[0]} `,
+);
+await scenario(
   "typing lpl: middle suggestion lol, literal kept in the left slot",
   async () => {
     for (const k of "lpl") await padTap("R", k);
@@ -758,15 +769,32 @@ await scenario(
   (o, s, x) => !!x.before[2] && o === `lpl⌫⌫⌫${x.before[2]} `,
 );
 await scenario(
-  "after Enter there is no word to pick: the bumpers type nothing and hold nothing",
+  "after Enter the row offers the words lines start with here, and RB types the middle one",
   async () => {
-    await padTap("R", "Enter");
+    for (let i = 0; i < 2; i++) {
+      for (const k of "hello") await padTap("R", k);
+      await padTap("R", " ");
+      for (const k of "there") await padTap("R", k);
+      await padTap("R", "Enter");
+    }
+    await settle(page);
+    const first = await labels();
+    const b = await badges();
+    await bumper(6);
+    return { first, b };
+  },
+  (o, s, x) => !!x.first[1] && x.b[1] === "RB" && o.endsWith(`⏎${x.first[1]} `),
+);
+await scenario(
+  "with nothing to offer (after a digit) the bumpers type nothing and hold nothing",
+  async () => {
+    await padTap("R", "1");
     await settle(page);
     await bumper(5);
     await bumper(6);
     return { held: await kbEval((kb) => [kb.state.toggleStates.Control, kb.state.toggleStates.Alt]), b: await badges() };
   },
-  (o, s, x) => /^⌫?⏎$/.test(o) && !(x.held[0] & 7) && !(x.held[1] & 7) && x.b.join() === ",,",
+  (o, s, x) => o === "1" && !(x.held[0] & 7) && !(x.held[1] & 7) && x.b.join() === ",,",
 );
 await setSetting("bumpers", true);
 await setSetting("typingLog", false);

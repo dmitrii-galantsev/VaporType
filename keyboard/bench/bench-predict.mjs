@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadEngine, KEYS } from "./bench.mjs";
+import { chips as chipRow } from "./bench-chips.mjs";
 
 const STALE_MS = 30000;
 const NEW_WORD_USES = 2;
@@ -50,22 +51,8 @@ export function readText(file, passes = 2) {
 }
 
 function chips(engine, buf, ctx) {
-  const seen = new Set([buf.toLowerCase()]);
-  const list = [];
-  if (buf.length >= 2) {
-    const c = engine.correct(buf, ctx);
-    if (c?.word && !seen.has(c.word.toLowerCase())) {
-      list.push(c.word.toLowerCase());
-      seen.add(c.word.toLowerCase());
-    }
-  }
-  for (const s of engine.suggest(buf, ctx, 6)) {
-    const k = s.word.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    list.push(k);
-  }
-  return list.slice(0, 2);
+  const { list, shown } = chipRow(engine, buf, ctx);
+  return list.slice(0, shown);
 }
 
 export function replay(engine, recs, { keys = KEYS, since = 0 } = {}) {
