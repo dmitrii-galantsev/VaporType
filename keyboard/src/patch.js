@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 37;
+  const VERSION = 38;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -25,7 +25,7 @@
   const KEY_GAP_MS = 30;
   const BACKSPACE_REPEAT_MS = 100;
   const HOLD_MS = 550;
-  const ENTER_LIFT_MS = 250;
+  const CLOSE_LIFT_MS = 250;
   const LEARN_SWIPE_ZIPF = 3.5;
   const STALE_MS = 30000;
   const NEW_WORD_USES = 2;
@@ -2761,7 +2761,9 @@
     }
   }
 
-  function enterWillClose(kb) {
+  function closesKeyboard(kb, key) {
+    if (key === "VKClose" || key === "VKDone") return true;
+    if (key !== "Enter") return false;
     const vkm = vkmOf(kb);
     return (
       !!settings.enterCloses &&
@@ -2771,8 +2773,8 @@
     );
   }
 
-  function holdEnter(kb, side, button, el) {
-    const h = (SW.enterHold ??= { kb, el, down: new Map(), sides: new Set(), timer: null });
+  function holdClose(kb, side, button, el) {
+    const h = (SW.closeHold ??= { kb, el, down: new Map(), sides: new Set(), timer: null });
     clearTimeout(h.timer);
     h.timer = null;
     h.down.set(button, side);
@@ -2780,32 +2782,32 @@
     setPadDown(h.kb, side, true);
   }
 
-  function enterPadsTouched(h) {
+  function closePadsTouched(h) {
     return [...h.sides].some((s) => (s === "L" ? h.kb.m_leftTrackpad : h.kb.m_rightTrackpad)?.active);
   }
 
-  function releaseEnterHold(button) {
-    const h = SW.enterHold;
+  function releaseCloseHold(button) {
+    const h = SW.closeHold;
     if (!h) return;
     const side = h.down.get(button);
     h.down.delete(button);
     if (![...h.down.values()].includes(side)) setPadDown(h.kb, side, false);
     if (h.down.size) return;
-    if (!enterPadsTouched(h)) sendEnterHold();
-    else h.timer = setTimeout(sendEnterHold, ENTER_LIFT_MS);
+    if (!closePadsTouched(h)) sendCloseHold();
+    else h.timer = setTimeout(sendCloseHold, CLOSE_LIFT_MS);
   }
 
-  function dropEnterHold() {
-    const h = SW.enterHold;
-    SW.enterHold = null;
+  function dropCloseHold() {
+    const h = SW.closeHold;
+    SW.closeHold = null;
     if (!h) return;
     clearTimeout(h.timer);
     for (const s of h.sides) setPadDown(h.kb, s, false);
   }
 
-  function sendEnterHold() {
-    const h = SW.enterHold;
-    SW.enterHold = null;
+  function sendCloseHold() {
+    const h = SW.closeHold;
+    SW.closeHold = null;
     if (!h) return;
     clearTimeout(h.timer);
     try {
@@ -2945,12 +2947,12 @@
     const kbAny = findKeyboard(e.currentTarget?.document ?? e.target?.ownerDocument);
     const side = kbAny && padSideFor(kbAny, button);
     const down = e.type === "vgp_onbuttondown";
-    if (SW.enterHold && (down ? !!side : SW.enterHold.down.has(button))) {
+    if (SW.closeHold && (down ? !!side : SW.closeHold.down.has(button))) {
       e.stopImmediatePropagation();
       e.preventDefault();
       if (e.detail?.is_repeat) return;
-      if (down) holdEnter(SW.enterHold.kb, side, button, null);
-      else releaseEnterHold(button);
+      if (down) holdClose(SW.closeHold.kb, side, button, null);
+      else releaseCloseHold(button);
       return;
     }
     if (!side) return;
@@ -3025,11 +3027,11 @@
           startEmojiHold(kb, side, emojiEl);
           return;
         }
-        if (hitKey === "Enter" && !SW.held[side] && !SW.enterHold && enterWillClose(kb)) {
+        if (!SW.held[side] && !SW.closeHold && closesKeyboard(kb, hitKey)) {
           flushSession(kb);
           e.stopImmediatePropagation();
           e.preventDefault();
-          holdEnter(kb, side, button, hit);
+          holdClose(kb, side, button, hit);
           return;
         }
         if (hitKey === " " && !SW.held[side] && !SL.s && slideAllowed(kb)) {
@@ -4851,7 +4853,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
                 note(e);
               }
             }
-            if (!on && SW.enterHold && !SW.enterHold.down.size && !enterPadsTouched(SW.enterHold)) sendEnterHold();
+            if (!on && SW.closeHold && !SW.closeHold.down.size && !closePadsTouched(SW.closeHold)) sendCloseHold();
             return r;
           },
       ) || changed;
@@ -5393,7 +5395,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
       if (kb && (h.side === "L" || h.side === "R")) setPadDown(kb, h.side, false);
     }
     SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = null;
-    dropEnterHold();
+    dropCloseHold();
   }
 
   function tickPatched() {
@@ -5647,7 +5649,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     !SW.drawPending &&
     !SW.sugHold &&
     !SW.emojiHold &&
-    !SW.enterHold &&
+    !SW.closeHold &&
     !SW.echoHold &&
     !state.tickSoon &&
     !state.refreshTimer &&
@@ -5716,7 +5718,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     };
     step(() => window.__oskModes?.sync?.(null, null, modeApi));
     step(() => closePanel());
-    for (const h of [SW.emojiHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold, SW.enterHold]) clearTimeout(h?.timer);
+    for (const h of [SW.emojiHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold, SW.closeHold]) clearTimeout(h?.timer);
     clearSlide();
     dropFinish();
     step(() => restoreDismiss());

@@ -428,6 +428,25 @@ await scenario(
   },
   (o, s, x) => o === "⏎" && x.early === true && x.late === false,
 );
+await scenario(
+  "Close key waits for the pad click to come up and the thumb to lift",
+  async () => {
+    const c = await center("VKClose");
+    await padAt("R", c.x, c.y);
+    await vgp("vgp_onbuttondown", BTN.R);
+    await sleep(60);
+    const down = await showingNow();
+    await vgp("vgp_onbuttonup", BTN.R);
+    await sleep(60);
+    const up = await showingNow();
+    await kbEval((kb) => kb.OnRightTrackpadAnalog(false, 0, 0, 0));
+    await settle(page);
+    const lifted = await showingNow();
+    await reopenAfterEnter();
+    return { down, up, lifted };
+  },
+  (o, s, x) => x.down && x.up && x.lifted === false,
+);
 const sentCount = () => page.evaluate(() => window.__keyLog.length);
 const lift = (side) =>
   kbEval((kb, side) => (side === "L" ? kb.OnLeftTrackpadAnalog(false, 0, 0, 0) : kb.OnRightTrackpadAnalog(false, 0, 0, 0)), side);

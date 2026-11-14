@@ -130,13 +130,13 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   read once in `HandleVirtualKeyDown("Enter")`, unless Shift is held). With the setting off the patch clears
   `m_bDismissOnEnter` before Steam handles Enter, so chat can go on line after line; B, Close or Steam+X still close.
   It remembers that it cleared Steam's flag and sets it again at the next Enter once the setting is on, when the
-  keyboard closes and on `stop()` (`dismissOnEnter`, `restoreDismiss`). An Enter that will close the keyboard and is
-  pressed with a pad (or a trigger acting as one) is held until that click comes up and the thumb leaves the pad, or
-  250 ms after the click comes up while the thumb stays (`enterWillClose`, `releaseEnterHold`). Any pad or trigger
-  click pressed while it is held joins the hold and does nothing else: Enter waits for every one of those clicks to
-  come up, matched by button, and for every pad they used to be untouched or for the same 250 ms. Steam hands the pads
-  back to the game's controller config as the keyboard hides; sent on press, the click still held went to the game
-  as whatever that config binds to it (a mouse click on a pad set to mouse).
+  keyboard closes and on `stop()` (`dismissOnEnter`, `restoreDismiss`). A key that will close the keyboard (an Enter
+  that will close it, Close, Done) and is pressed with a pad (or a trigger acting as one) is held until that click comes
+  up and the thumb leaves the pad, or 250 ms after the click comes up while the thumb stays (`closesKeyboard`,
+  `releaseCloseHold`). Any pad or trigger click pressed while it is held joins the hold and does nothing else: the key
+  waits for every one of those clicks to come up, matched by button, and for every pad they used to be untouched or for
+  the same 250 ms. Steam hands the pads back to the game's controller config as the keyboard hides; sent on press, the
+  click still held went to the game as whatever that config binds to it (a mouse click on a pad set to mouse).
 - **Taps vs swipes.** A press on a letter is a tap, typed on release in press order (rolled two-thumb typing stays
   in order), until the stroke is a deliberate drag. Released taps go out as soon as every earlier press is released,
   without waiting for a later press still held on the other pad. Taps that are followed within 220 ms by a swipe are
