@@ -231,6 +231,9 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (the left trigger already holds
     Shift). Closing the keyboard forgets a bumper still held (its release may never arrive) and drops the held bit
     from Ctrl / Alt, so a reopened keyboard types plain keys; it also drops a pad hold on a chip or the emoji key.
+    A press while words are still going out is sent after them; a tap released before that, or before Steam's
+    keyboard state caught up with the press, still goes out once as a press and release, and never leaves the key
+    held.
   - Pick words: a bumper press picks a chip as a click on it would (`pickByBumper`). RB takes the best chip and LB
     the other one (`PICK_SLOTS`): while tapping a word RB is the middle chip and LB the right one; after a space RB is
     the middle prediction and LB the left one; after a swipe RB is the left alternative and LB the right one; right
@@ -471,7 +474,8 @@ screenshots.
 - `node keyboard/sim/twopad-test.mjs`: both pads at once (`twopad.mjs` drives them on an 8 ms tick; a resting thumb is
   a pad sampled with jitter and no press): simultaneous swipes, commit latency with the other thumb resting,
   alternating and rolled taps in order, joins and non-joins across the 220 ms window, closing 0-60 ms after a swipe,
-  and bumpers or keys right after a two-pad swipe at 4x CPU. `twopad-bench.mjs` prints the table in
+  and bumpers or keys right after a two-pad swipe at 4x CPU (a held bumper, and a 15 ms tap while the words still go
+  out). A `drive()` ends only after every delayed action it scheduled has fired. `twopad-bench.mjs` prints the table in
   [BAKEOFFS.md](BAKEOFFS.md#two-pads-at-once).
 - `node keyboard/sim/leak-test.mjs` (`OPENS`, `SAMPLES`, `CPU`): opens and closes the keyboard 40 times with stock
   Steam and with the patch and counts the handlers registered with `RegisterForControllerAnalogInputMessages`: stock

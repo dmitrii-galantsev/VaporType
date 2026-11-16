@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 41;
+  const VERSION = 42;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -780,8 +780,10 @@
   }
 
   function holdKey(code, down) {
-    if (down && !state.sent.get(code) && outputPending()) holdLater();
-    else setKey(code, down);
+    if (down && !state.sent.get(code) && outputPending()) {
+      OUT.pressed.add(code);
+      holdLater();
+    } else setKey(code, down);
   }
 
   function holdLater() {
@@ -789,7 +791,13 @@
     OUT.restore = true;
     emit(() => {
       OUT.restore = false;
+      const pressed = [...OUT.pressed];
+      OUT.pressed.clear();
       syncHeld();
+      const tapped = pressed.filter((code) => !state.sent.get(code) && !OUT.pressed.has(code));
+      if (!tapped.length) return;
+      for (const code of tapped) setKey(code, true);
+      emit(() => syncHeld(), CHORD);
     }, CHORD);
   }
 
@@ -975,7 +983,7 @@
     return kb.props?.VirtualKeyboardManager;
   }
 
-  const OUT = { queue: [], busy: false, gen: 0, timer: null, at: {}, word: false };
+  const OUT = { queue: [], busy: false, gen: 0, timer: null, at: {}, word: false, pressed: new Set() };
 
   const SHIFTED = {
     "!": "1",
@@ -1040,6 +1048,7 @@
     OUT.timer = null;
     OUT.busy = false;
     OUT.restore = false;
+    OUT.pressed.clear();
   }
 
   function keepWords() {
@@ -5196,7 +5205,12 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
       delete state.pickHeld[button];
       const wasHeld = !!state.bumpers[which];
       state.bumpers[which] = false;
-      if (kb && (kb.state?.toggleStates?.[which] ?? 0) & HELD) {
+      const code = HELD_MODS.find(([name]) => name === which)?.[1];
+      if (wasHeld && code !== undefined && !state.sent.get(code) && !OUT.pressed.has(code)) {
+        OUT.pressed.add(code);
+        holdLater();
+      }
+      if (kb && (wasHeld || (kb.state?.toggleStates?.[which] ?? 0) & HELD)) {
         kb.setState(
           (s) => ({ ...s, toggleStates: { ...s.toggleStates, [which]: s.toggleStates[which] & ~HELD } }),
           () => syncHeld(),

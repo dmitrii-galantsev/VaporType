@@ -210,18 +210,19 @@ for (const [name, make] of [
   check(v.length >= 1 && v.length <= 3 && "abcdefghij".startsWith(v), "keyboard closed with no swipe pending still drops queued output", v);
 }
 
-for (const [bn, b, tail] of [
-  ["LB", 5, /^\[\+ctrl\]\[-ctrl\]$/],
-  ["RB", 6, /^\[\+alt\]\[-alt\]$/],
-  ["Y", 4, /^ $/],
-  ["X", 3, /^⌫+$/],
-  ["RT", 8, /^(⏎| y)$/],
+for (const [bn, b, tail, up] of [
+  ["LB", 5, /^\[\+ctrl\]\[-ctrl\]$/, 700],
+  ["RB", 6, /^\[\+alt\]\[-alt\]$/, 700],
+  ["LB tapped for 15 ms while the words still go out", 5, /^\[\+ctrl\]\[-ctrl\]$/, 15],
+  ["RB tapped for 15 ms while the words still go out", 6, /^\[\+alt\]\[-alt\]$/, 15],
+  ["Y", 4, /^ $/, 15],
+  ["X", 3, /^⌫+$/, 15],
+  ["RT", 8, /^(⏎| y)$/, 15],
 ]) {
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
   const got = [];
   for (const d of [0, 10, 20, 40]) {
     const { pads, last, want } = await twoSwipes();
-    const up = bn.endsWith("B") ? 700 : 15;
     const out = await drive(pads, last + d + up + 200, [
       [last, "btnDown", b, d],
       [last, "btnUp", b, d + up],
@@ -232,7 +233,7 @@ for (const [bn, b, tail] of [
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   check(
     got.every(([, , ok]) => ok),
-    `${bn} pressed 0/10/20/40 ms after a two-pad swipe at 4x CPU: both words first, then the ${bn} output once`,
+    `${bn}, pressed 0/10/20/40 ms after a two-pad swipe at 4x CPU: both words first, then its output once`,
     got.map(([d, v]) => `${d} ms: ${JSON.stringify(v)}`).join(", "),
   );
 }

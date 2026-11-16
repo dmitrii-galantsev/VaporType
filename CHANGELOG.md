@@ -6,7 +6,7 @@ updates itself.
 
 ## 0.3.1 — 2026-11-16
 
-Keyboard v41, engine v11, word pairs v6. Changes since 0.3.0.
+Keyboard v42, engine v11, word pairs v6. Changes since 0.3.0.
 
 ### Updates
 
@@ -17,6 +17,11 @@ Keyboard v41, engine v11, word pairs v6. Changes since 0.3.0.
 - The keyboard's settings have the same Updates row under System.
 - A release that changes how Decky loads the plugin is not installed on its own: the button reads "Update with Decky…"
   and Decky asks before installing.
+
+### Fixes
+
+- A quick LB or RB tap (Ctrl / Alt) made while a swiped word was still being typed could be lost, or leave Ctrl or Alt
+  held. It now goes out once, after the word.
 
 ## 0.3.0 — 2026-11-16
 
