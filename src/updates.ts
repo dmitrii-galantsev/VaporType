@@ -43,6 +43,7 @@ let deps: Deps | null = null;
 let status: UpdateStatus | null = null;
 let busy: "checking" | "installing" | null = null;
 let waiting = false;
+let reloadPending = false;
 let note: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,6 +70,7 @@ export function canInstall(): boolean {
 export function updateLine(): string {
   const cur = status?.current ?? "?";
   const latest = status?.latest ?? "";
+  if (reloadPending) return `${latest} installed · finishes when the keyboard closes`;
   if (busy === "installing") return `Installing ${latest}…`;
   if (waiting) return `${latest} will install when the keyboard closes`;
   if (busy === "checking") return "Checking for updates…";
@@ -109,6 +111,27 @@ async function reload(): Promise<void> {
   await router.call("loader/reload_plugin", PLUGIN);
 }
 
+function keyboardOpen(): boolean {
+  try {
+    return deps?.keyboardOpen() === true;
+  } catch {
+    return false;
+  }
+}
+
+function untilClosed(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const poll = () => {
+      waitTimer = null;
+      if (!running) return resolve(false);
+      if (!keyboardOpen()) return resolve(true);
+      waitTimer = setTimeout(poll, CLOSED_POLL_MS);
+    };
+    if (waitTimer) clearTimeout(waitTimer);
+    waitTimer = setTimeout(poll, CLOSED_POLL_MS);
+  });
+}
+
 async function apply(auto: boolean): Promise<void> {
   if (!deps || !status?.latest || busy) return;
   const version = status.latest;
@@ -118,6 +141,12 @@ async function apply(auto: boolean): Promise<void> {
     await deps.save();
     const r = await installUpdate(version, auto);
     if (r.ok) {
+      if (keyboardOpen()) {
+        reloadPending = true;
+        const closed = await untilClosed();
+        reloadPending = false;
+        if (!closed) return;
+      }
       await reload();
       return;
     }
@@ -134,26 +163,15 @@ async function apply(auto: boolean): Promise<void> {
   }
 }
 
-function whenClosed(auto: boolean): Promise<void> {
-  if (!running || !deps) return Promise.resolve();
-  let open: boolean;
-  try {
-    open = deps.keyboardOpen();
-  } catch {
-    open = false;
-  }
-  if (!open) {
+async function whenClosed(auto: boolean): Promise<void> {
+  if (!running || !deps) return;
+  if (keyboardOpen()) {
+    waiting = true;
+    const closed = await untilClosed();
     waiting = false;
-    return apply(auto);
+    if (!closed) return;
   }
-  waiting = true;
-  return new Promise((resolve) => {
-    if (waitTimer) clearTimeout(waitTimer);
-    waitTimer = setTimeout(() => {
-      waitTimer = null;
-      void whenClosed(auto).finally(resolve);
-    }, CLOSED_POLL_MS);
-  });
+  await apply(auto);
 }
 
 export function installNow(): Promise<void> {
@@ -232,6 +250,7 @@ export function startUpdates(d: Deps): void {
 export function stopUpdates(): void {
   running = false;
   waiting = false;
+  reloadPending = false;
   if (timer) clearTimeout(timer);
   if (waitTimer) clearTimeout(waitTimer);
   timer = waitTimer = null;

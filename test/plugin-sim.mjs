@@ -270,6 +270,8 @@ async function updateTests() {
     window.__deckyStubs.get_update_status = async () => ({ ...st });
     window.__deckyStubs.install_update = async (version, auto) => {
       window.__installs.push({ version, auto, open: window.__oskTrackpadFix.keyboardOpen(), t: Date.now() });
+      window.__sim.vkm.SetVirtualKeyboardVisible();
+      window.__oskTrackpadFix.tickNow();
       return { ok: true, version };
     };
     window.DeckyBackend = { call: async (...a) => void window.__reloads.push({ a, t: Date.now() }) };
@@ -290,16 +292,41 @@ async function updateTests() {
     window.__oskTrackpadFix.tickNow();
     return Date.now();
   });
-  const done = await waitFor(() => window.__reloads.length > 0, 12000);
-  const after = await page.evaluate(() => ({ installs: window.__installs, reloads: window.__reloads.map((r) => r.a) }));
+  const installed = await waitFor(() => window.__installs.length > 0, 12000);
+  await sleep(6500);
+  const reopened = await page.evaluate(() => ({
+    open: window.__oskTrackpadFix.keyboardOpen(),
+    reloads: window.__reloads.length,
+    line: VaporType.updateLine(),
+  }));
   check(
-    "once the keyboard is closed it installs the update and reloads the plugin through Decky",
+    "once the keyboard is closed it installs the update; reopened before the reload, the reload waits",
+    !!installed &&
+      reopened.open === true &&
+      reopened.reloads === 0 &&
+      /9\.9\.9 installed · finishes when the keyboard closes/.test(reopened.line),
+    JSON.stringify(reopened),
+  );
+  const closedAgain = await page.evaluate(() => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    window.__oskTrackpadFix.tickNow();
+    return Date.now();
+  });
+  const done = await waitFor(() => window.__reloads.length > 0, 12000);
+  const after = await page.evaluate(() => ({
+    installs: window.__installs,
+    reloads: window.__reloads.map((r) => r.a),
+    reloadAt: window.__reloads[0]?.t ?? 0,
+  }));
+  check(
+    "the update was installed with the keyboard closed and the plugin reloads through Decky only after it closes again",
     !!done &&
       after.installs.length === 1 &&
       after.installs[0].version === "9.9.9" &&
       after.installs[0].auto === true &&
       after.installs[0].open === false &&
       after.installs[0].t >= closedAt &&
+      after.reloadAt >= closedAgain &&
       JSON.stringify(after.reloads[0]) === JSON.stringify(["loader/reload_plugin", "VaporType"]),
     JSON.stringify(after),
   );
