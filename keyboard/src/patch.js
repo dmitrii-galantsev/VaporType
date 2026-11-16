@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 40;
+  const VERSION = 41;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -216,7 +216,7 @@
       [["Opacity", ["preview", "s_boardAlpha", "s_keyAlpha", "s_spaceAlpha", "s_stripAlpha"]]],
     ],
     words: [[["", ["c_list", "words"]]]],
-    system: [[["Privacy", ["t_privateMode", "t_typingLog", "clear_log", "forget_all"]]], [["Controls", ["help", "version"]]]],
+    system: [[["Privacy", ["t_privateMode", "t_typingLog", "clear_log", "forget_all"]]], [["Controls", ["updates", "help", "version"]]]],
   };
   const PANEL_MIN_H = 252;
   const PANEL_NARROW = 600;
@@ -3555,6 +3555,7 @@
     if (id === "forget_all") return addRow(forgetRow(), pg);
     if (id === "version") return addRow({ el: el("osk-set-version", versionLine()), focus: false }, pg);
     if (id === "help") return addRow({ el: helpCard(), focus: false }, pg);
+    if (id === "updates") return window.__oskHost?.updates ? addRow(updatesRow(window.__oskHost.updates), pg) : null;
     if (id === "words") {
       const col = pg.col;
       pg.col = el("osk-set-words");
@@ -3731,6 +3732,35 @@
       r.v = text + empty;
       r.el.classList.toggle("osk-set-disabled", empty);
       setInfo(r, text);
+    };
+    return r;
+  }
+
+  function updatesRow(host) {
+    const st = () => {
+      try {
+        return host.status() ?? {};
+      } catch (e) {
+        note(e);
+        return {};
+      }
+    };
+    const r = actionRow("updates", "Updates", "", () => {
+      let job = null;
+      try {
+        job = st().available ? host.install() : host.check();
+      } catch (e) {
+        note(e);
+      }
+      r.paint();
+      Promise.resolve(job)
+        .catch(note)
+        .finally(() => r.paint());
+    });
+    r.paint = () => {
+      const s = st();
+      setText(r.l, s.available ? "Update" : "Updates");
+      setInfo(r, String(s.text ?? ""));
     };
     return r;
   }

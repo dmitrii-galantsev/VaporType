@@ -14,6 +14,7 @@ import {
   shutdown,
   start,
 } from "./keyboard";
+import { canInstall, checkForUpdates, installNow, installWithDecky, setAutoUpdate, updateLine, updateStatus } from "./updates";
 
 const WAIT_FOR_KEYBOARD_MS = 20000;
 
@@ -37,6 +38,10 @@ function Content() {
   const status = f ? f.status() : st?.enabled === false ? "off" : "loading";
   const versionLine = f?.versionLine?.() ?? "";
   const err = errorText();
+  const upd = updateStatus();
+  const decky = !!upd?.available && !!upd.needsDecky;
+  const updateLabel = decky ? "Update with Decky…" : canInstall() ? `Update to ${upd?.latest}` : "Check for updates";
+  const updateAction = () => void (decky ? installWithDecky() : canInstall() ? installNow() : checkForUpdates(true));
 
   const forget = async () => {
     if (!confirmForget) {
@@ -92,6 +97,24 @@ function Content() {
           <ButtonItem layout="below" onClick={forget}>
             {confirmForget ? "Press again to forget everything" : "Forget everything"}
           </ButtonItem>
+        </PanelSectionRow>
+      </PanelSection>
+      <PanelSection title="Updates">
+        <PanelSectionRow>
+          <Field label="Updates" description={updateLine()} focusable />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={updateAction}>
+            {updateLabel}
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
+            label="Install updates automatically"
+            description="When the keyboard is closed."
+            checked={upd?.autoUpdate !== false}
+            onChange={(on) => void setAutoUpdate(on)}
+          />
         </PanelSectionRow>
       </PanelSection>
       <PanelSection title="Status">

@@ -62,7 +62,7 @@ if (!faultOnly) {
 let backend = null;
 async function startBackend() {
   const proc = spawn("python3", [path.join(here, "bridge.py")], {
-    env: { ...process.env, HOME: home, VAPORTYPE_REMOVE_FAULTS: removeFaults },
+    env: { ...process.env, HOME: home, VAPORTYPE_REMOVE_FAULTS: removeFaults, VAPORTYPE_UPDATE_API: "http://127.0.0.1:9/none" },
     stdio: ["pipe", "pipe", "inherit"],
   });
   const pending = new Map();
@@ -116,8 +116,11 @@ async function preparePage(p) {
   await p.evaluate(() => {
     window.__deckyFaults = {};
     window.__deckyCalls = [];
+    window.__deckyStubs = {};
+    window.__toasts = [];
     window.__deckyCall = async (name, args) => {
       window.__deckyCalls.push({ name, t: Date.now(), line: String(["VaporType", name, ...args]), bytes: JSON.stringify(args).length });
+      if (window.__deckyStubs[name]) return window.__deckyStubs[name](...args);
       const fault = window.__deckyFaults[name];
       if (fault?.delay) await new Promise((r) => setTimeout(r, fault.delay));
       if (fault?.fail) throw new Error(`injected ${name} failure`);
@@ -238,6 +241,87 @@ async function faultTests() {
   await page.evaluate(() => VaporType.shutdown());
 }
 
+async function updateTests() {
+  const host = await page.evaluate(() => typeof window.__oskHost?.updates?.status === "function");
+  await page.evaluate(() => window.__oskTrackpadFix.openSettings());
+  await padTap("OSKSet_tab_system");
+  const row = await page.evaluate(() => {
+    const el = document.querySelector('[data-key="OSKSet_updates"]');
+    return el ? el.innerText : null;
+  });
+  await page.evaluate(() => window.__oskTrackpadFix.closeSettings());
+  check("the plugin offers the updates object and the keyboard's System tab shows an Updates row", host && /Updates/.test(row ?? ""), row);
+
+  await page.evaluate(() => {
+    const st = {
+      current: "0.3.0",
+      latest: "9.9.9",
+      available: true,
+      htmlUrl: null,
+      checkedAt: Date.now() / 1000,
+      error: null,
+      needsDecky: null,
+      failed: null,
+      autoUpdate: true,
+    };
+    window.__installs = [];
+    window.__reloads = [];
+    window.__deckyStubs.check_update = async () => ({ ...st });
+    window.__deckyStubs.get_update_status = async () => ({ ...st });
+    window.__deckyStubs.install_update = async (version, auto) => {
+      window.__installs.push({ version, auto, open: window.__oskTrackpadFix.keyboardOpen(), t: Date.now() });
+      return { ok: true, version };
+    };
+    window.DeckyBackend = { call: async (...a) => void window.__reloads.push({ a, t: Date.now() }) };
+  });
+  const open1 = await page.evaluate(() => window.__oskTrackpadFix.keyboardOpen());
+  await page.evaluate(() => {
+    window.__cycle = VaporType.updateCycle();
+  });
+  await sleep(6500);
+  const whileOpen = await page.evaluate(() => ({ installs: window.__installs.length, line: VaporType.updateLine() }));
+  check(
+    "an automatic update waits while the keyboard is open and says so",
+    open1 === true && whileOpen.installs === 0 && /9\.9\.9 will install when the keyboard closes/.test(whileOpen.line),
+    JSON.stringify({ open1, ...whileOpen }),
+  );
+  const closedAt = await page.evaluate(() => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    window.__oskTrackpadFix.tickNow();
+    return Date.now();
+  });
+  const done = await waitFor(() => window.__reloads.length > 0, 12000);
+  const after = await page.evaluate(() => ({ installs: window.__installs, reloads: window.__reloads.map((r) => r.a) }));
+  check(
+    "once the keyboard is closed it installs the update and reloads the plugin through Decky",
+    !!done &&
+      after.installs.length === 1 &&
+      after.installs[0].version === "9.9.9" &&
+      after.installs[0].auto === true &&
+      after.installs[0].open === false &&
+      after.installs[0].t >= closedAt &&
+      JSON.stringify(after.reloads[0]) === JSON.stringify(["loader/reload_plugin", "VaporType"]),
+    JSON.stringify(after),
+  );
+  await page.evaluate(() => {
+    window.__deckyStubs.take_update_record = async () => ({ from: "0.3.0", to: "9.9.9", at: 1, auto: true });
+  });
+  await page.evaluate(() => VaporType.showUpdateRecord());
+  const toasts = await page.evaluate(() => window.__toasts.map((t) => t.body));
+  check(
+    "the new version shows one quiet toast after an automatic update",
+    JSON.stringify(toasts) === JSON.stringify(["VaporType updated to 9.9.9"]),
+    JSON.stringify(toasts),
+  );
+  await page.evaluate(() => {
+    for (const k of ["check_update", "get_update_status", "install_update", "take_update_record"]) delete window.__deckyStubs[k];
+    delete window.DeckyBackend;
+    window.__sim.vkm.SetVirtualKeyboardVisible();
+    window.__oskTrackpadFix.tickNow();
+  });
+  await sleep(500);
+}
+
 if (faultOnly) {
   await faultTests();
 } else {
@@ -308,6 +392,7 @@ if (faultOnly) {
     logLines.some((l) => l.includes('"committed":"hello"')),
     `${logLines.length} lines`,
   );
+  await updateTests();
 
   await page.evaluate(() => VaporType.setEnabled(false));
   const off = await running();

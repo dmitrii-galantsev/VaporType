@@ -1,4 +1,7 @@
 import { callable } from "@decky/api";
+import { startUpdates, stopUpdates } from "./updates";
+
+export { canInstall, checkForUpdates, installNow, showUpdateRecord, updateCycle, updateLine } from "./updates";
 
 export type Install = { date: string | null; via: string; decky: string; plugin?: string | null };
 
@@ -262,6 +265,7 @@ export async function start(): Promise<void> {
   }
   if (disposed || gen !== generation) return;
   state = loaded;
+  startUpdates({ keyboardOpen: () => fix()?.keyboardOpen?.() === true, save: syncNow });
   await serial(() => tick(gen));
   schedule(gen);
 }
@@ -270,6 +274,7 @@ export function shutdown(): void {
   disposed = true;
   generation++;
   cancelPoll();
+  stopUpdates();
   void stopLocal();
 }
 

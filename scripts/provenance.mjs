@@ -18,7 +18,7 @@ export const PACKAGE = [
   "dist/keyboard/manifest.json",
   ...KEYBOARD.map((f) => `dist/keyboard/${f}`),
 ];
-const SOURCES = [...KEYBOARD.map((f) => `keyboard/${RUNTIME[f]}`), "src/keyboard.ts", "src/index.tsx"];
+const SOURCES = [...KEYBOARD.map((f) => `keyboard/${RUNTIME[f]}`), "src/keyboard.ts", "src/updates.ts", "src/index.tsx"];
 
 const sha = (f) => crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");
 const fail = (msg) => {

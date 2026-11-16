@@ -277,13 +277,16 @@ async function mainBlock() {
       .map((k) => !!document.querySelector(`[data-key="OSKSet_t_${k}"]`))
       .concat(!!document.querySelector('[data-key="OSKSet_clear_log"]')),
   );
+  const noUpdates = await h.F(() => !document.querySelector('[data-key="OSKSet_updates"]'));
   if (shots) await page.screenshot({ path: path.join(shots, `panel-v${keyboardVersion()}.png`) });
   check(
     new RegExp(`^VaporType v${keyboardVersion()} · engine v\\d+ · words v\\d+ · pairs v\\d+ · modes v\\d+ · installed 2026-10-23$`).test(
       vline ?? "",
-    ) && toggles.every(Boolean),
-    "settings panel: version line, private mode and typing log switches, clear log button",
-    { vline, toggles },
+    ) &&
+      toggles.every(Boolean) &&
+      noUpdates,
+    "settings panel: version line, private mode and typing log switches, clear log button, no Updates row without a plugin host",
+    { vline, toggles, noUpdates },
   );
   await h.padTap("R", "OSKSet_clear_log");
   await h.F(() => window.__oskTrackpadFix.closeSettings());
