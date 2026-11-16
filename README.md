@@ -30,6 +30,10 @@ updates off. The check only asks GitHub for the latest release; nothing else is 
 Decky loads the plugin is offered as "Update with Decky…", which asks before installing. Installing the same URL again
 also updates. Learned words and settings are kept.
 
+An update is whatever is published as a release of github.com/dmitrii-galantsev/VaporType, downloaded over HTTPS; the
+checksum beside it catches a damaged download but is not a signature. To review each release before it installs, turn
+off **Install updates automatically**.
+
 ## Where the keys are on each pad
 
 ![The keys each trackpad covers: the left pad from Esc to U, J and N, the right pad from Y, H and B to Backspace](docs/media/pads.png)
