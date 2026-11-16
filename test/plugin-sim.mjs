@@ -298,15 +298,21 @@ async function updateTests() {
     open: window.__oskTrackpadFix.keyboardOpen(),
     reloads: window.__reloads.length,
     line: VaporType.updateLine(),
+    offered: window.__oskHost.updates.status().available,
   }));
   check(
-    "once the keyboard is closed it installs the update; reopened before the reload, the reload waits",
+    "once the keyboard is closed it installs the update; reopened before the reload, the reload waits and no update is offered",
     !!installed &&
       reopened.open === true &&
       reopened.reloads === 0 &&
+      reopened.offered === false &&
       /9\.9\.9 installed · finishes when the keyboard closes/.test(reopened.line),
     JSON.stringify(reopened),
   );
+  await page.evaluate(() => {
+    window.__oskHost.updates.install();
+    window.__oskHost.updates.check();
+  });
   const closedAgain = await page.evaluate(() => {
     window.__sim.vkm.SetVirtualKeyboardHidden();
     window.__oskTrackpadFix.tickNow();

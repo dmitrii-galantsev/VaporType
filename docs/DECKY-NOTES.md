@@ -96,7 +96,7 @@ compiles (otherwise the update is refused and recorded as failed). If its `plugi
 in anything but `publish`, it has a top-level file or folder the installed copy lacks, or it has files in a folder
 other than `dist/`, it changes nothing and returns `needsDecky` with the GitHub Pages URL and the release's hash
 (Decky's own downloader cannot follow GitHub's release redirect); the Quick Access button "Update with Decky…" then
-calls `utilities/install_plugin` with install type 2 (`UPDATE`) and Decky asks before installing. In the minute after a
+calls `utilities/install_plugin` with install type 2 (`UPDATE`) and Decky asks before installing. Shortly after a
 release, while Pages is still deploying, Pages may serve the previous zip and Decky rejects it as a hash mismatch
 (Decky only logs that); trying again later works. Otherwise it keeps the current `dist/` and top-level files in
 memory, writes each `dist/` file through a temp file and a rename, removes `dist/` files the new zip lacks, rewrites

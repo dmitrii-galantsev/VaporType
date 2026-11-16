@@ -64,7 +64,7 @@ export function updateStatus(): UpdateStatus | null {
 }
 
 export function canInstall(): boolean {
-  return !!status?.available && !!status.latest;
+  return !!status?.available && !!status.latest && !busy && !reloadPending;
 }
 
 export function updateLine(): string {
