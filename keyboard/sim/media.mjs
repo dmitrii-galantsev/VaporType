@@ -619,5 +619,38 @@ if (want("settings")) {
   await s.browser.close();
 }
 
+if (want("look")) {
+  const s = await boot({ panel: false });
+  await s.page.evaluate(() => {
+    const f = window.__oskTrackpadFix;
+    f.openSettings();
+    const b = f.panel.tabEls.look;
+    const r = b.getBoundingClientRect();
+    for (const t of ["pointerdown", "pointerup", "click"])
+      b.dispatchEvent(
+        new PointerEvent(t, {
+          bubbles: true,
+          clientX: r.x + r.width / 2,
+          clientY: r.y + r.height / 2,
+          pointerType: "mouse",
+          isPrimary: true,
+        }),
+      );
+  });
+  await sleep(300);
+  await settle(s.page);
+  const top = await s.page.evaluate(() => {
+    if (window.__oskTrackpadFix.panel.tab !== "look") throw new Error("Look tab did not open");
+    return document.querySelector(".osk-set")?.getBoundingClientRect().top ?? 250;
+  });
+  await still(s.page, "settings-look.png", {
+    x: 0,
+    y: Math.max(0, Math.round(top - 8)),
+    width: W,
+    height: Math.round(SCREEN_H - Math.max(0, top - 8)),
+  });
+  await s.browser.close();
+}
+
 if (!keepTmp) fs.rmSync(tmp, { recursive: true, force: true });
 console.log(out);

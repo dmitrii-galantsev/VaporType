@@ -96,7 +96,7 @@ Settings → Look sets the theme (Modern, Steam, OLED), how much the game behind
 how see-through each part is. **Keyboard background** is the backdrop behind the keys. It is solid by default; lower it
 to see the game through the keyboard.
 
-![The Look tab, Keyboard background slider highlighted](docs/media/settings-look.png)
+![The Look tab: theme, Glass and the four opacity sliders at their defaults](docs/media/settings-look.png)
 
 ## Privacy
 
