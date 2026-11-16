@@ -29,7 +29,8 @@ jobs:
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Release notes from CHANGELOG.md
         run: |
-          awk -v v="${GITHUB_REF_NAME#v}" '/^## /{on = index($0, "## " v " ") == 1; next} on' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          awk -v v="${GITHUB_REF_NAME#v}" '/^## /{on = index($0, "## " v " ") == 1; next} on' CHANGELOG.md |
+            awk '/^  [^ ]/ && buf != "" {sub(/^ +/, ""); buf = buf " " $0; next} {if (started) print buf; buf = $0; started = 1} END {if (started) print buf}' > "$RUNNER_TEMP/notes.md"
           test -s "$RUNNER_TEMP/notes.md"
           printf '\n### Install\n\nDecky → Developer → **Install Plugin from URL**: `https://dmitrii-galantsev.github.io/VaporType/VaporType.zip` (always the latest release), or install `VaporType.zip` below; its SHA-256 is in `VaporType.zip.sha256`. Learned words and settings are kept.\n' >> "$RUNNER_TEMP/notes.md"
       - run: pnpm test
