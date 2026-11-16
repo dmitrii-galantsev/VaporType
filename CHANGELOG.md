@@ -5,15 +5,17 @@ To update, install the same URL again (README, Install). Learned words and setti
 
 ## 0.3.0 — 2026-11-16
 
-Keyboard v39, engine v11, word pairs v6. Changes since 0.2.8.
+Keyboard v40, engine v11, word pairs v6. Changes since 0.2.8.
 
 ### New defaults
 
 - **Learning is your choice.** The first-use card asks only "Learn the words you type?", and "Don't learn" is
   selected when it opens, so learning comes on only when you pick "Learn my words". Learning is off until then.
+- Turning on Settings → Typing → Learn new words also counts as your answer, so the card does not come back.
 - **Solid keyboard.** The keyboard background and the top strip are opaque by default. Lower Settings → Look → Keyboard
   background to see the game through it (#1).
 - **Show typed text** is a normal setting, off by default, and no longer part of the first-use card.
+- If you updated from 0.2 without answering the card, Show typed text is off; turn it on in Settings → Look.
 - Installs that already answered the card keep their own learning, typed-text and look settings.
 
 ### Suggestions
@@ -44,7 +46,6 @@ Keyboard v39, engine v11, word pairs v6. Changes since 0.2.8.
 - Backspace right after the space or comma that ended a word goes back into that word. Before, the first ending
   ("comr") was learned as a word and the rest ("e") as another; now only the finished word counts.
 - The typing log no longer writes empty key-geometry records when the keyboard closes.
-
 - Enter, Close and Done that hide the keyboard wait for the pad click to come up. Before, the keyboard closed with
   the click still held and Steam handed that click to the game: a stray mouse click on a pad set to mouse.
 - A held Enter waits for every click pressed during the hold. A trigger used as a pad click could lose the Enter,
