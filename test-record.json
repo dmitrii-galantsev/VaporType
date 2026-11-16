@@ -1,5 +1,5 @@
 {
-  "tested": "2026-11-16T19:40:06.814Z",
+  "tested": "2026-11-16T19:54:49.911Z",
   "keyboard": 41,
   "tests": [
     "keyboard/sim/test-all.sh (simulator suites and engine gates)",
@@ -9,11 +9,11 @@
   "files": {
     "plugin.json": "05c6edd378d5b4bee231a69c331b7e8da2365ff2b7c5ea8fb145513a98cffcbc",
     "package.json": "a187b378a27f7ab090eb21b7f292d51b654c00e7d66d1f3537483eb306bf0d2e",
-    "main.py": "1ac321ca090371025dd86ef0203755d75426f2e31f1da7a7f161946848630abd",
+    "main.py": "135842fcf930e7a420a597f6f68e274237724d786e868c71f4dc5f82e1ad1c02",
     "LICENSE": "5a7445d47bb56558a68eeaa97951332d4e0a0af39b9242ef92d77f7be1835718",
-    "README.md": "c2215432606d725341776aee3e5574b35c2807eb997b8042b5fa5aacf01cdabf",
-    "dist/index.js": "ef69c9d1848669995c1d31552eed88e4e9d789143dda695bc7041724ae163c32",
-    "dist/index.js.map": "9c5d22a01c2f5cc1482bd948f3c5dc8b1f82d49d8223b02cd3491ef8c04fd95a",
+    "README.md": "8b8e0001e95eb5f2dae6abda9f13939ff543dedba15061fff5e032677fca722e",
+    "dist/index.js": "61b3e475cf15eb6be8dbeb906a4eba6d6936cb1a7962277672f03320f0195425",
+    "dist/index.js.map": "1c3d6e8f7c99925f5747a776035d8bff127acc0f7f6242c2155c55756e2649c6",
     "dist/keyboard/manifest.json": "b0600ba8ec72b88bcb76c34e48e5a39367a9fc48a867294d096922abf3c0a472",
     "dist/keyboard/patch.js": "0ba8c63416ed5466e27824d63ec094b7b9acd18978b33afbbfbd19d00c25df98",
     "dist/keyboard/modes.js": "00cc3aabcd61606aa6db6772e67a9a6eca6f3f2a8c6a2e6e814a5d8117fc45a2",
@@ -28,7 +28,7 @@
     "keyboard/data/lm.js": "29c4f830350c39c93fc6f25f522041f91630a478ccf86aadb744c196722436f6",
     "keyboard/data/DATA-LICENSES.md": "b4bd77888040ca1844cf7d9b2521c60c85734e93bf4a2d0278353c73814a5d27",
     "src/keyboard.ts": "40d79041a3b8efda0d950773e522305f438ddb2605eb203aff30d9866645ecdf",
-    "src/updates.ts": "8d07db62bb32e7062c01a46c3791932391c17a1d0b3fe6ca08719cda1cb884b4",
+    "src/updates.ts": "216d5f15040f2cf1d6cc5159a9bd186f4f8a03d07b1dd554648b5a0c49289088",
     "src/index.tsx": "d164697c4c9be62bf71f173131963474ec8ecd673589f8dfc604ebc90e1b087d"
   }
 }
