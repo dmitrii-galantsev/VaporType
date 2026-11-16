@@ -1,0 +1,57 @@
+# Changelog
+
+Every release since 0.2.7. Versions 0.2.9 and 0.2.10 were never published on their own; their changes ship in 0.3.0.
+To update, install the same URL again (README, Install). Learned words and settings are kept.
+
+## 0.3.0 — 2026-11-16
+
+Keyboard v38, engine v10, word pairs v6. Changes since 0.2.8.
+
+### Suggestions
+
+- One word model ranks the whole suggestion row. Completions, corrections, split words and next words are all scored
+  as how likely the word is after the previous word, mixing the dictionary, a word-pair table and what you type
+  yourself, so the row leans toward your own words and phrases.
+- Two words of context: the row looks at the last two words, from a new table of 25,000 common word triples.
+- Word pairs you type often complete from the first letter of the second word.
+- After Enter, and when the keyboard opens, the row offers the words you usually start a line with.
+- The row follows the model's order. A correction takes the middle slot only when autocorrect is on and will apply
+  it, and while a word is clearly still being typed, the left slot shows a third completion instead of the typed
+  letters or "+ add".
+- One-letter words are no longer offered as corrections.
+- Words ended by Enter or by . ! ? are learned like words ended by Space (a line of a single word still is not).
+
+### Keys and buttons
+
+- **Win key** between Ctrl and Alt, for Windows PCs streamed with Moonlight (Win, Shift, S takes a partial
+  screenshot). It works like Ctrl and Alt: tap for one key, double tap to lock.
+- Ctrl, Win and Alt are as wide as a letter key; the space bar is 240 px.
+- **LB / RB can pick suggestions**: Settings → Input → LB / RB is now Ctrl / Alt (default), Pick words, or Off. With
+  Pick words, RB types the chip marked RB and LB the one marked LB, and after an autocorrection LB puts back what
+  you typed.
+
+### Fixes
+
+- Enter, Close and Done that hide the keyboard wait for the pad click to come up. Before, the keyboard closed with
+  the click still held and Steam handed that click to the game: a stray mouse click on a pad set to mouse.
+- A held Enter waits for every click pressed during the hold. A trigger used as a pad click could lose the Enter,
+  and a second click during the hold could close the keyboard with that click held.
+- Errors from the word engine are shown in the status line instead of being dropped.
+
+### Docs
+
+- README shows where the settings are and what Settings → Look → Keyboard background does (#1).
+- `docs/BAKEOFFS.md` has the replay of a real typing log before and after each suggestion change, and what was tried
+  and not taken.
+
+## 0.2.8 — 2026-10-28
+
+- Denser two-column settings panel built for the trackpads: one bar of five tabs, every tab fits without scrolling,
+  pads ring and preview the control they are on, sliders drag with a pad click.
+- Look is split into Style and Opacity, with a live preview above the sliders.
+
+## 0.2.7 — 2026-10-25
+
+First public release: swipe typing, word suggestions, autocorrect and Esc / Ctrl / Alt keys for the Steam Deck's
+on-screen keyboard, as a Decky Loader plugin. It also unregisters the input handlers Steam leaks every time its
+keyboard opens, which otherwise make trackpad typing slower until Steam restarts.

@@ -85,7 +85,17 @@ to type.
   does not react to Win, set Moonlight's **Capture system keyboard shortcuts** to Always.
 - **Settings**: hold the emoji key (the one with the gear).
 
+![The emoji key with the gear badge, at the bottom left](docs/media/settings-open.png)
+
 ![The settings panel, Typing tab](docs/media/settings.png)
+
+## How it looks
+
+Settings → Look sets the theme (Modern, Steam, OLED), how much the game behind the keyboard is blurred (Glass), and
+how see-through each part is. **Keyboard background** is the backdrop behind the keys: raise it to hide what is
+behind the keyboard, for example in Desktop Mode.
+
+![The Look tab, Keyboard background slider highlighted](docs/media/settings-look.png)
 
 ## Privacy
 
