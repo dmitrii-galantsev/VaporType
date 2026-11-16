@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 38;
+  const VERSION = 39;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -76,12 +76,12 @@
     swipe: true,
     autocorrect: true,
     suggestions: true,
-    learn: true,
+    learn: false,
     trail: true,
     autoSpace: true,
     removeAutoSpace: true,
     bumpers: true,
-    echo: true,
+    echo: false,
     slideCursor: true,
     enterCloses: false,
     privateMode: false,
@@ -93,10 +93,10 @@
     reach: 55,
     deadzone: 100,
     theme: "modern",
-    boardAlpha: 40,
+    boardAlpha: 100,
     keyAlpha: 100,
     spaceAlpha: 30,
-    stripAlpha: 90,
+    stripAlpha: 100,
     blur: 0,
     mode: "bigkeys",
   };
@@ -319,6 +319,8 @@
     lastOut: "unknown",
     auto: false,
     fromSwipe: null,
+    reopen: null,
+    learned: null,
     labels: [],
     sugs: [],
     mode: null,
@@ -383,11 +385,7 @@
   let settingsAt = window.__oskSettingsAt ?? 0;
   const settings = (window.__oskSettings = cleanSettings(window.__oskSettings ?? loadSettings()));
   const eff = (name) =>
-    settings.privateMode && PRIVATE_OFF.has(name)
-      ? false
-      : !settings.consent && (name === "learn" || name === "echo")
-        ? false
-        : settings[name];
+    settings.privateMode && PRIVATE_OFF.has(name) ? false : !settings.consent && name === "learn" ? false : settings[name];
   const SUPPORTED_LAYOUTS = new Set(["qwerty", "qwerty_int"]);
   const layoutSupported = (layout = state.layoutApi?.current?.()) => SUPPORTED_LAYOUTS.has(layout?.name);
   state.settings = settings;
@@ -1341,6 +1339,8 @@
   }
 
   function commitBuffer(how) {
+    T.reopen = null;
+    T.learned = null;
     const w = T.buf;
     const swipe = T.fromSwipe;
     const line = T.words;
@@ -1441,7 +1441,10 @@
         allowNew = state.pending[k] >= NEW_WORD_USES;
         if (allowNew) delete state.pending[k];
       }
-      if (eng.learn(w, T.prev, { allowNew, start: start && !T.prev })) userChanged();
+      if (eng.learn(w, T.prev, { allowNew, start: start && !T.prev })) {
+        T.learned = { w, prev: T.prev, start: start && !T.prev };
+        userChanged();
+      }
     } catch (e) {
       note(e);
     }
@@ -1457,6 +1460,7 @@
       }
     }
     SW.recent = null;
+    T.reopen = null;
     T.buf = "";
     T.taps = [];
     T.fix = [];
@@ -1515,7 +1519,7 @@
       logLine({ t: Date.now(), ...env });
     }
     const keys = kb ? letterKeys(kb) : null;
-    if (!keys) return;
+    if (!keys || !Object.keys(keys).length) return;
     const r = kb.m_keyboardDiv?.getBoundingClientRect();
     const geo = {
       type: "geo",
@@ -1800,6 +1804,7 @@
   function pickSuggestion(kb, i) {
     settleFinish();
     SW.recent = null;
+    T.reopen = null;
     const item = T.sugs[i];
     if (!item?.word || item.inert) return;
     if (item.unblock) {
@@ -1920,6 +1925,7 @@
     const a = T.autocorr;
     T.autocorr = null;
     if (!a) return false;
+    T.reopen = null;
     if (LOG.staged?.committed === a.to && LOG.staged.outcome === "autocorrected") LOG.staged.outcome = "autocorrect-undone";
     backspace(kb, a.to.length + a.sep.length);
     sendText(kb, a.from);
@@ -1988,6 +1994,51 @@
 
   const repeating = (kb) => SW.repeat || !!kb.m_nBackspaceTimer;
 
+  function wordSnapshot() {
+    if (!T.buf || T.fromSwipe) return null;
+    return {
+      buf: T.buf,
+      taps: T.taps.slice(),
+      fix: T.fix.slice(),
+      prev: T.prev,
+      prev2: T.prev2,
+      prev2For: T.prev2For,
+      start: T.start,
+      words: T.words,
+      pending: state.pending[T.buf.toLowerCase()],
+      staged: LOG.staged,
+    };
+  }
+
+  function keepReopen(snap) {
+    if (!snap || T.buf) return;
+    T.reopen = { ...snap, rec: LOG.staged !== snap.staged ? LOG.staged : null, learned: T.learned };
+  }
+
+  function reopenWord(r) {
+    if (r.learned) {
+      try {
+        getEngine()?.unlearn?.(r.learned.w, r.learned.prev, { start: r.learned.start });
+        userChanged();
+      } catch (e) {
+        note(e);
+      }
+    }
+    const k = r.buf.toLowerCase();
+    if (r.pending === undefined) delete state.pending[k];
+    else state.pending[k] = r.pending;
+    if (r.rec && LOG.staged === r.rec) LOG.staged = null;
+    T.buf = r.buf;
+    T.taps = r.taps;
+    T.fix = r.fix;
+    T.prev = r.prev;
+    T.prev2 = r.prev2;
+    T.prev2For = r.prev2For;
+    T.start = r.start;
+    T.words = r.words;
+    T.lastOut = "word";
+  }
+
   function track(kb, key, ch, tap) {
     const auto = T.auto;
     T.auto = false;
@@ -2000,6 +2051,8 @@
       if (key === "VKPaste") resetTracker();
       return;
     }
+    const reopen = T.reopen;
+    T.reopen = null;
     if (kb.state?.layoutState !== 0 && kb.state?.layoutState !== 1) {
       resetTracker();
     } else if (/^[A-Za-z']$/.test(ch)) {
@@ -2017,20 +2070,26 @@
         T.buf = T.buf.slice(0, -1);
         T.taps = T.taps.slice(0, T.buf.length);
         T.lastOut = T.buf ? "word" : "unknown";
+      } else if (reopen) {
+        reopenWord(reopen);
       } else {
         T.prev = null;
         T.words = Math.max(0, T.words - 1);
         T.lastOut = "unknown";
       }
     } else if (key === " ") {
+      const snap = wordSnapshot();
       commitBuffer("space");
       T.lastOut = "space";
+      keepReopen(snap);
     } else if (key === "Enter") {
       commitBuffer("enter");
       T.lastOut = "unknown";
     } else if (/^[.,!?;:]$/.test(ch)) {
+      const snap = wordSnapshot();
       commitBuffer(/[.!?]/.test(ch) ? "stop" : "punct");
       T.lastOut = "punct";
+      keepReopen(snap);
     } else if (key === "VKClose" || key === "VKDone") {
       commitBuffer("end");
       resetTracker();
@@ -2349,6 +2408,7 @@
     settleFinish();
     if (!cands.length) return;
     if (T.buf) commitBuffer("swipe");
+    T.reopen = null;
     const snapshot = { buf: T.buf, prev: T.prev, lastOut: T.lastOut, fromSwipe: T.fromSwipe, auto: T.auto, taps: [] };
     const prefix = settings.autoSpace && (T.lastOut === "word" || T.lastOut === "punct") ? " " : "";
     const now = caseFlags(kb);
@@ -3182,7 +3242,7 @@
 
   function focusFirst() {
     if (!P.open) return;
-    if (P.tab === "consent") return setFocus(SET + "consent_on");
+    if (P.tab === "consent") return setFocus(SET + "consent_off");
     setFocus(P.pages[P.tab]?.rows[0]?.key ?? SET + `tab_${P.tab}`);
   }
 
@@ -3380,22 +3440,24 @@
     if (P.consentEl) return;
     const card = el("osk-set-consent");
     card.appendChild(
-      el("osk-set-consent-text", "VaporType can learn words you type and show what you typed above the keys. Both stay on this Deck."),
+      el(
+        "osk-set-consent-text",
+        "Learn the words you type? VaporType can remember new words and the words you often type together, to suggest them. They stay on this Deck.",
+      ),
     );
     const row = el("osk-set-consent-buttons");
     const answer = (on) => () => {
       setSetting("learn", on);
-      setSetting("echo", on);
       setSetting("consent", true);
       closePanel();
     };
     for (const [id, cls, text, on] of [
-      ["consent_on", "osk-set-primary", "Turn on", true],
-      ["consent_off", "osk-set-secondary", "Keep off", false],
+      ["consent_on", "osk-set-primary", "Learn my words", true],
+      ["consent_off", "osk-set-secondary", "Don't learn", false],
     ])
       row.appendChild(addRow({ key: SET + id, el: keyEl(id, cls, text), type: "consent", act: answer(on) }).el);
     card.appendChild(row);
-    const hint = el("osk-set-consent-hint", "You can change both later: hold ");
+    const hint = el("osk-set-consent-hint", "You can change this later: hold ");
     hint.append(el("osk-gear"), " (the emoji key) for settings.");
     card.append(hint, el("osk-set-consent-later", "B: later"));
     P.consentEl = card;
@@ -3480,7 +3542,7 @@
     }
     if (id === "reset_look")
       return addRow(
-        actionRow("reset_look", "Reset look", "Modern theme, default see-through, no blur", () => resetLook()),
+        actionRow("reset_look", "Reset look", "Modern theme, opaque, no blur", () => resetLook()),
         pg,
       );
     if (id === "clear_log") return addRow(clearLogRow(), pg);

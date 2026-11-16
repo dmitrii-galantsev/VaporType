@@ -28,6 +28,7 @@ async function fresh({ before } = {}) {
   await sim.page.evaluate(() => {
     window.__oskUserWords = null;
     window.localStorage.clear();
+    window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ echo: true }));
     window.__oskInstall = { date: "2026-10-23" };
   });
   if (before) await sim.page.evaluate(before);

@@ -1,5 +1,5 @@
 (function (root) {
-  const VERSION = 10;
+  const VERSION = 11;
   const DEFAULTS = {
     samples: 40,
     band: 0.15,
@@ -1469,7 +1469,7 @@
       return true;
     }
 
-    function unlearn(word, prev) {
+    function unlearn(word, prev, { start = false } = {}) {
       lastSearch = null;
       const k = lowerKey(word);
       const e = entries.get(k);
@@ -1488,6 +1488,7 @@
       userTop = null;
       const pk = prevKey(prev);
       if (pk) setPair(pk, e.first, (user.bigrams[pk + " " + e.first] ?? 0) - 1);
+      else if (start) setPair(START, e.first, (user.bigrams[START + " " + e.first] ?? 0) - 1);
     }
 
     function forget(word) {

@@ -14,6 +14,7 @@ await page.evaluate(["swipe/words.js", "swipe/lm.js", "swipe/engine.js", "modes.
 await page.evaluate(() => {
   window.__oskUserWords = null;
   window.localStorage.clear();
+  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ echo: true }));
 });
 results.push(`inject: ${await inject(page, read("patch.js"))}`);
 
@@ -223,8 +224,8 @@ for (const o of [100, 40, 0]) {
   );
 }
 await F(() => {
-  window.__oskTrackpadFix.setSetting("boardAlpha", 40);
-  window.__oskTrackpadFix.setSetting("stripAlpha", 90);
+  window.__oskTrackpadFix.setSetting("boardAlpha", 100);
+  window.__oskTrackpadFix.setSetting("stripAlpha", 100);
 });
 const caps = await F(() => getComputedStyle(document.querySelector('[data-key="CapsLock"] img')).transform);
 check(

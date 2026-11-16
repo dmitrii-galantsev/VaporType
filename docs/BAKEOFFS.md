@@ -538,6 +538,20 @@ because those ended a word without logging or learning it. The privacy rule now 
 the current rule and record format are in [KEYBOARD.md](KEYBOARD.md). Logs written before v36 replay to the same
 numbers as before.
 
+2026-11-16 (keyboard v39, engine v11): keyboard v37 logged 1,555 finished words in its first three days on the Deck
+(1,725 records). With `prev` in every record, 75 tapped words had none although a word ended by a space or comma came
+less than 10 s before; at least 17 of them were the end of that word, typed after Backspace took out the space and a
+letter or two ("comr", Backspace twice, "e"). Backspace on an empty buffer only cleared the previous word, so the
+first ending was logged and learned (an unknown typo counted towards a new word, a known word and its pair counted
+once more) and the letters typed next were logged, learned and completed as a word of their own. Backspace right
+after the space or punctuation that ended a typed word now takes the word back: it undoes what that ending learned
+(`unlearn` also takes back a line start), drops its log record, and the letters typed next continue the word. The
+same log had 48 `geo` records with no keys, written when a word ended by Enter was logged after Enter closed the
+keyboard; the benches then replayed the words after it with no key geometry. No `geo` record is written without keys
+now, and the benches skip the old ones. `bench-chips.mjs` on the v37 days, before → after the bench fix: three chips
+after 1 / 2 / 3 / 4 letters 42.3 / 59.9 / 75.8 / 77.8 → 42.3 / 60.0 / 75.8 / 78.5, presses saved as shown 39.7 → 39.8,
+chips that do not extend a clean prefix 4.7 → 4.5 %. The row the Deck showed was not affected, only its replay.
+
 ## Space bar width with the Win key (keyboard v34)
 
 The Win key took one more of Steam's 8.2 %-wide keys from the bottom row, and the space bar is the row's only flexible

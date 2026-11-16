@@ -277,7 +277,7 @@ if (faultOnly) {
     () => window.__oskSettings?.consent === true && !document.querySelector('[data-key="OSKSet_consent_on"]'),
     5000,
   );
-  check("Turn on on the card sets consent and closes it", !!answered);
+  check("Learn my words on the card sets consent and closes it", !!answered);
   await sleep(300);
   await page.evaluate(() => {
     window.__oskTrackpadFix.setSetting("typingLog", true);

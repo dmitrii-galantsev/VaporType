@@ -102,7 +102,7 @@ export async function inject(page, src, { consent = true } = {}) {
       try {
         s = JSON.parse(localStorage.getItem("oskSwipeSettings") ?? "{}") ?? {};
       } catch (e) {}
-      if (!("consent" in s)) localStorage.setItem("oskSwipeSettings", JSON.stringify({ ...s, consent: true }));
+      if (!("consent" in s)) localStorage.setItem("oskSwipeSettings", JSON.stringify({ learn: true, ...s, consent: true }));
     });
   }
   const status = await page.evaluate(src);

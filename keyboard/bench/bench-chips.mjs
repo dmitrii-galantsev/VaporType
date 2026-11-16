@@ -95,7 +95,8 @@ export function replay(
     last = -Infinity;
   for (const r of recs) {
     if (r.type === "geo") {
-      if (r.keys) keys = Object.fromEntries(Object.entries(r.keys).map(([k, [x, y, w, h]]) => [k, { x, y, w, h }]));
+      if (r.keys && Object.keys(r.keys).length)
+        keys = Object.fromEntries(Object.entries(r.keys).map(([k, [x, y, w, h]]) => [k, { x, y, w, h }]));
       continue;
     }
     if (r.type === "line") {

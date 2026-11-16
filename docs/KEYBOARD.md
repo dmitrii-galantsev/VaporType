@@ -50,10 +50,10 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
 
   | setting | slider | default | what |
   |---|---|---|---|
-  | `boardAlpha` | Keyboard background | 40 | the board between the keys |
+  | `boardAlpha` | Keyboard background | 100 | the board between the keys |
   | `keyAlpha` | Keys | 100 | letter keys; other keys get `keyAlpha - (100 - boardAlpha) / 10` |
   | `spaceAlpha` | Space bar | 30 | the space bar, also while it shows the typed text or "◂ cursor ▸" |
-  | `stripAlpha` | Top strip | 90 | the typed-text field and suggestion row |
+  | `stripAlpha` | Top strip | 100 | the typed-text field and suggestion row |
   | `blur` | Glass (segmented) | Off | Off / Light / Strong: a 6 / 16 px backdrop blur on the board only |
 
   The four alphas are 0-100 in steps of 5 (0 clear, 100 solid). They go to the page as CSS variables (`--osk-ba`,
@@ -64,8 +64,9 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   defaults over black and mid-grey (6.8:1 or more). Steam's dark `BackgroundGlass` under the keyboard is cleared so the
   game shows through. Blur costs 4.5-5.3 ms per frame on the compositor thread in the simulator (software
   compositing, animated backdrop), so it is off by default; whether gamescope lets the overlay's
-  backdrop filter see the game at all is unverified on the Deck. "Reset look" restores the look and all five to their
-  defaults. Older saved settings carry `opacity` (100/90/80, 70 read as 80) instead: it becomes
+  backdrop filter see the game at all is unverified on the Deck. The keyboard is opaque by default; the space bar keeps
+  30, which on a solid board reads as a darker key with its label at full contrast. "Reset look" restores the look and
+  all five to their defaults; saved settings keep their own values. Older saved settings carry `opacity` (100/90/80, 70 read as 80) instead: it becomes
   `boardAlpha = opacity - 50` (OLED + 30; 100 stays 100), `keyAlpha` the old letter-key alpha rounded to 5 (100), and
   `stripAlpha = max(90, opacity)`, so 80 % loads as 30 / 100 / 90 and the space bar takes the default 30. Only the
   default keyboard theme is restyled; a points-shop theme is left alone. One blue, `#0a74d6` (white text 4.69:1),
@@ -185,8 +186,10 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   pair `^ word` (line starts). Deleting a swiped word with Backspace counts against it. Steam cannot tell password
   fields apart, so a passphrase of ordinary words raises those words and pairs. The tracked word and previous word
   reset on an outside touch, after 30 s without typing, and on arrows, Tab, Esc, chords and paste, so
-  Backspace-undo and picks never delete text where the caret has moved; Backspace on an empty buffer also takes one
-  off the line's word count. `forget("word")` and `forgetAll()` remove learned data. Learned data lives in
+  Backspace-undo and picks never delete text where the caret has moved. Backspace right after the space or punctuation
+  that ended a typed word takes the word back: what it learned (word, pair, line start, new-word count) is undone, its
+  log record is dropped, and the letters typed next continue it, so "comr", Backspace twice, "e" counts once as
+  "come". Any other Backspace on an empty buffer takes one off the line's word count. `forget("word")` and `forgetAll()` remove learned data. Learned data lives in
   `user-words.json` (counts only, no timestamps; the previous version as `.bak`): under
   `~/homebrew/settings/vaportype/` with the plugin, beside `inject.mjs` with the standalone injector; Steam's
   `localStorage` (`oskSwipeUserWords`) is the fallback.
@@ -328,10 +331,12 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   the next key, pad or touch input, when the panel opens, or after 8 s. The gear is one SVG used on the emoji key, in
   the tip and on the first-use card.
 - **First use.** With no saved settings anywhere (`__oskUserWords.settings` and `localStorage`), the first keyboard
-  open shows a card: "VaporType can learn words you type and show what you typed above the keys. Both stay on this
-  Deck." with Turn on / Keep off (pad, touch, D-pad and A), a gear hint and "B: later". Until it is answered, learning and the typed-text field
-  are off; the answer sets both and is saved as `consent`. B or Close postpones it until the keyboard is next
-  opened. Users with saved settings never see it and keep their settings. Pads, touch and mouse click the controls
+  open shows a card: "Learn the words you type? VaporType can remember new words and the words you often type
+  together, to suggest them. They stay on this Deck." with Learn my words / Don't learn (pad, touch, D-pad and A), a
+  gear hint and "B: later". The focus starts on Don't learn, so learning comes on only when the user moves to Learn
+  my words and presses it. Learning is off by default and until the card is answered; the answer sets `learn` and is
+  saved as `consent`. B or Close postpones it until the keyboard is next opened. Show typed text (`echo`) is an
+  ordinary setting, off by default. Users with saved settings never see it and keep their settings. Pads, touch and mouse click the controls
   (they carry `data-key="OSKSet_*"`, so Steam's pad hit-test finds them); B, ✕ or hiding the keyboard closes the
   panel. Auto-repeats never repeat a tab or page step. A trigger the user has set to click the pad (Steam's trigger-as-click) still clicks the pad's pointer instead.
   Steam delivers the sticks (as D-pad directions), bumpers (5, 6) and triggers (7, 8) as digital `vgp_onbuttondown` /
@@ -352,7 +357,8 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   A tapped word also carries `erased`, the letters Backspace took out of it (with tap positions, at most 24), and a
   bumper pick carries `via` ("LB" or "RB"). A word record carries `how` (`space`, `punct`, `stop` for `.` `!` `?`,
   `swipe`, `enter`) and `prev`, the previous word the engine used. `env` records carry the versions and key settings
-  and `geo` records the key geometry whenever they change. Learning's privacy rule applies: the only word of a line is
+  and `geo` records the key geometry whenever it changes (none while the keyboard has no keys on screen; the benches
+  skip the empty ones older logs have). Learning's privacy rule applies: the only word of a line is
   logged (`lone: true`) only if the engine already knows it, and a word left in the buffer at close is not logged.
   When Enter ends a line that wrote no `enter` record, a `{type: "line", t}` record marks the boundary, never twice
   in a row. The host appends to `typing-log.jsonl` (`~/homebrew/data/vaportype/` with the plugin, beside
@@ -484,8 +490,8 @@ screenshots.
   area hits no key, pad taps, a swiped word, Backspace after a swipe and after a tap, suggestion picks, Enter,
   outside touch, arrows, Tab, Ctrl chord, Esc, 60-character tail, the 30 s gap, hidden under the panel, the switch,
   the space-bar fallback, keyboard reopen, `stop()`. `SHOTS=<dir>` saves screenshots.
-- `node keyboard/sim/look-test.mjs`: computed styles per look: at the defaults the space bar (0.3) is far more
-  see-through than the keys (1.0); board, key, space-bar and top-strip alphas follow their own settings, 0 and 100 give
+- `node keyboard/sim/look-test.mjs`: computed styles per look: at the defaults the board is solid and the space bar
+  (0.3) far more see-through than the keys (1.0); board, key, space-bar and top-strip alphas follow their own settings, 0 and 100 give
   clear and solid; contrast of the space-bar label, "◂ cursor ▸", the typed text in the space bar and in the top strip
   (>= 4.5:1 over black and mid-grey); Glass blur Light / Strong / Off on the board; 60 slider changes rewrite the
   variables sheet 60 times and the look stylesheet never; no DOM changes while idle.
@@ -509,14 +515,17 @@ screenshots.
   learned (known word, repeated password-like word), with the typing log on: lone known word logged with `lone`, lone
   unknown word and a word left at close not logged, the last word of a line logged with `prev` and learned with its
   pair (an unknown one on its second use), `.` logged as `stop` and breaking the pair, a word typed alone after a
-  pause still a lone word, line markers written once and
+  pause still a lone word, Backspace over the space or comma after a typed word taking the word back (one record and
+  one learned use for the finished word), no empty key geometry for a word logged after the keyboard closed, line
+  markers written once and
   never doubled, and nothing logged or learned in private mode; forget requests pending until
-  `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (Keep off by
-  pad, Turn on by D-pad and A, existing users skip it), the VaporType version line (and no wordmark), and the typing log off
+  `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (only about learning,
+  Don't learn focused and taken by A, Learn my words by D-pad and A, Show typed text off, existing users skip it and
+  keep their settings), the VaporType version line (and no wordmark), and the typing log off
   by default with nothing typed kept and `keyboardOpen()` following the keyboard. `inject-test.mjs` adds a forget
   whose replacement save fails (`user-words.json.tmp` undeletable): not acknowledged, no forgotten word on disk or
   after a restart, finished once the fault clears; a forget kept pending through five failed deliveries (`.bak` made
-  undeletable) and delivered once it can be deleted; and a forget during an in-flight save. `run.mjs`'s `inject()` answers the first-use card for every suite unless called with
+  undeletable) and delivered once it can be deleted; and a forget during an in-flight save. `run.mjs`'s `inject()` answers the first-use card with Learn my words for every suite unless called with
   `{ consent: false }`, and `openSim()` waits until the keyboard has slid into view.
 - `node keyboard/sim/ux-test.mjs`: look and flows: slide arrow by direction, gear badge size and backing, focus on the first control after a pad hold, no box-shadow or
   outline on any key, chip, panel control or the field, "added: word" after "+ add", tip closed by the panel and drawn

@@ -13,7 +13,7 @@ const { browser, page, errors } = await openSim({ backdrop: true });
 await page.evaluate(() => {
   window.__oskUserWords = null;
   window.localStorage.clear();
-  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, tipShown: true }));
+  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, tipShown: true, echo: true }));
 });
 await page.evaluate(["swipe/words.js", "swipe/lm.js", "swipe/engine.js"].map(read).join("\n;\n"));
 results.push(`inject: ${await inject(page, read("patch.js"))}`);
@@ -25,7 +25,7 @@ const set = async (o) => {
   await settle(page);
   return ok.every(Boolean);
 };
-const DEFAULT_LOOK = { boardAlpha: 40, keyAlpha: 100, spaceAlpha: 30, stripAlpha: 90, blur: 0 };
+const DEFAULT_LOOK = { boardAlpha: 100, keyAlpha: 100, spaceAlpha: 30, stripAlpha: 100, blur: 0 };
 
 const look = () =>
   page.evaluate(() => {
@@ -77,8 +77,8 @@ for (const theme of ["modern", "steam", "oled"]) {
   await set({ theme, ...DEFAULT_LOOK });
   const d = await look();
   check(
-    d.space[3] <= 0.35 && d.key[3] - d.space[3] >= 0.5 && near(d.board[3], 0.4) && near(d.key[3], 1),
-    `${theme}: at the defaults the space bar is far more see-through than the keys`,
+    d.space[3] <= 0.35 && d.key[3] - d.space[3] >= 0.5 && near(d.board[3], 1) && near(d.key[3], 1),
+    `${theme}: at the defaults the board is solid and the space bar far more see-through than the keys`,
     { board: d.board, key: d.key, space: d.space },
   );
   const label = contrast(d.label, d.space, d.board);
@@ -86,7 +86,7 @@ for (const theme of ["modern", "steam", "oled"]) {
     label: d.label,
     contrast: label,
   });
-  check(near(d.strip[3], 0.9), `${theme}: the top strip defaults to 90 %`, { strip: d.strip });
+  check(near(d.strip[3], 1), `${theme}: the top strip defaults to 100 %`, { strip: d.strip });
   const rowText = d.row && contrast(d.row.color, d.row.field, d.strip, d.board);
   check(rowText >= MIN_CONTRAST, `${theme}: the typed-text field in the top strip stays readable at the default strip alpha`, {
     row: d.row,

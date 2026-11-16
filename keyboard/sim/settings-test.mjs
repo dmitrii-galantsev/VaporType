@@ -653,16 +653,16 @@ await scenario(
     const reset = await settings();
     await closePanel();
     const ok =
-      d.boardAlpha === 40 &&
+      d.boardAlpha === 100 &&
       d.keyAlpha === 100 &&
       d.spaceAlpha === 30 &&
-      d.stripAlpha === 90 &&
+      d.stripAlpha === 100 &&
       d.blur === 0 &&
       d.theme === "modern" &&
       !("opacity" in d) &&
       rows.length === 4 &&
       rows[2][2] === "30 %" &&
-      rows[3][2] === "90 %" &&
+      rows[3][2] === "100 %" &&
       up === 35 &&
       down === 25 &&
       /--osk-sa:0\.3[;}]/.test(varsOpen) &&
@@ -683,10 +683,10 @@ await scenario(
       narrowOpen &&
       wide &&
       reset.theme === "modern" &&
-      reset.boardAlpha === 40 &&
+      reset.boardAlpha === 100 &&
       reset.keyAlpha === 100 &&
       reset.spaceAlpha === 30 &&
-      reset.stripAlpha === 90 &&
+      reset.stripAlpha === 100 &&
       reset.blur === 0 &&
       reset.reach === 55;
     return {
@@ -993,7 +993,7 @@ await scenario(
     const removed2 = await settings();
     await page.evaluate(() => {
       const f = window.__oskTrackpadFix;
-      for (const [k, v] of Object.entries({ theme: "modern", boardAlpha: 40, keyAlpha: 100, spaceAlpha: 30, stripAlpha: 90, blur: 0 }))
+      for (const [k, v] of Object.entries({ theme: "modern", boardAlpha: 100, keyAlpha: 100, spaceAlpha: 30, stripAlpha: 100, blur: 0 }))
         f.setSetting(k, v);
     });
     const j = (x) => JSON.stringify(x);
@@ -1007,7 +1007,7 @@ await scenario(
         j(m70.s) === j(["modern", 30, 100, 30, 90, 0]) &&
         j(m023.s) === j(["modern", 30, 100, 30, 90, 0]) &&
         kept023 &&
-        j(junk.s) === j(["modern", 40, 100, 30, 90, 0]) &&
+        j(junk.s) === j(["modern", 100, 100, 30, 100, 0]) &&
         removed.reach === "right" &&
         removed.mode === "bigkeys" &&
         !("onePad" in removed) &&
@@ -1065,7 +1065,9 @@ await scenario("without the file the settings come back from localStorage", asyn
   return {
     ok:
       Object.entries(s).every(([k, v]) =>
-        ["trail", "enterCloses", "privateMode", "typingLog", "logFile"].includes(k) ? v === false : typeof v !== "boolean" || v === true,
+        ["trail", "enterCloses", "privateMode", "typingLog", "logFile", "learn", "echo"].includes(k)
+          ? v === false
+          : typeof v !== "boolean" || v === true,
       ) &&
       s.reach === 55 &&
       sug,
