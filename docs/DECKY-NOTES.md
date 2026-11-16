@@ -36,32 +36,23 @@ Python backend (`main.py`, `Plugin` class, methods called with `callable()` from
 - `~/homebrew/data/vaportype/typing-log.jsonl` (+ `.1`, rotated at 5 MB)
 
 `DECKY_PLUGIN_SETTINGS_DIR` and `DECKY_PLUGIN_RUNTIME_DIR` are named after the plugin's folder, which is the zip's
-top folder (`sandboxed_plugin.py`). Every 5 s the frontend runs the standalone injector's protocol, requests first:
-`takeRequests` → handle → `ackRequests(rev)` when the request carries a revision, `takeUserWords` → save →
-`ackUserWords(rev)`, `takeTypingLog` → append → `ackTypingLog(upTo)`. Requests are handled on every cycle; words
-and the typing log are taken only when the keyboard is closed (`keyboardOpen()`), after 60 s with it open, when
-200 log lines are waiting, and on disable, unload and forget. Typing 50 words in one keyboard session is one save
-and, with the typing log on, one append.
+top folder (`sandboxed_plugin.py`). Every 5 s the frontend runs the host protocol described in
+[KEYBOARD.md](KEYBOARD.md#host-protocol-and-the-standalone-injector), as `inject.mjs` does. Requests are handled on
+every cycle; words and the typing log are taken only when the keyboard is closed (`keyboardOpen()`), after 60 s with
+it open, when 200 log lines are waiting, and on disable, unload and forget, so typing 50 words in one keyboard session
+is one save.
 
 Decky Loader (v3.3.0, `frontend/src/wsrouter.ts`) logs every call with `console.debug("Calling PY method … with
-args", args)`, unconditionally, and Steam writes that line to `~/.local/share/Steam/logs/webhelper_js.txt` with the
-arguments turned into strings. A JSON string argument lands there whole (0.2.0 put the whole dictionary and every
-typing-log line into Steam's log, once per word). The frontend therefore sends the words and the log lines as
-objects, which that line shows as `[object Object]`; what Steam logs is the method name, the epoch, the request
-flags (`{"removeBackup":true,"rev":3}`) and the Steam-session id. The words payload carries `forgetGen`
-(not written to the file): when it differs from the last saved one the backend writes without a backup and deletes
-`.bak`; if `window.__oskTrackpadFix.forgetGen` moved while the save was in flight, the frontend handles the requests
-again and saves once more before acknowledging, so a forget always wins. The frontend sets `hostAcks = true` on
-every cycle and acknowledges a request only when every deletion succeeded (a missing file counts as deleted); the
-backend keeps every path a forget could not delete in `plugin-settings.json` with the tombstone (keyed by the
-frontend's Steam-session id and the request revision), retries exactly those, and reports success only when each is
-gone from disk or, for `user-words.json`, replaced by a save made after the forget. A retry does not bump the epoch. Nothing reads a path that is still pending deletion: `load_state`
-skips it, and `load_state` retries the deletions first. Snapshots taken before a
-forget (words or typing log) are dropped, and the backend refuses saves and appends from an older epoch. This matches the standalone `inject.mjs`.
+args", args)`, and Steam writes that line to `~/.local/share/Steam/logs/webhelper_js.txt` with the arguments turned
+into strings, so a JSON string argument lands there whole (0.2.0 put the whole dictionary and every typing-log line
+into Steam's log). The frontend therefore sends words and log lines as objects, which that line shows as
+`[object Object]`; Steam logs only the method name, the epoch, the request flags and the Steam-session id.
 
-All backend calls go through one queue in the frontend and one lock in the backend. A forget (Quick Access
-button, or the keyboard panel's request) bumps a persisted epoch; saves carry the epoch they were taken under and
-the backend refuses older ones, so a save in flight cannot bring forgotten words back.
+All backend calls go through one queue in the frontend and one lock in the backend. A forget (Quick Access button, or
+the keyboard panel's request) bumps a persisted epoch and records a tombstone in `plugin-settings.json` (keyed by the
+frontend's Steam-session id and the request revision) with every path still to delete. Saves and appends carry the
+epoch they were taken under and the backend refuses older ones, so a save in flight cannot bring forgotten words
+back; `load_state` retries pending deletions first and never reads a pending path. A retry does not bump the epoch.
 
 Every transition (start, enable, disable, unload) bumps a generation; code is evaluated only while the generation
 that fetched it is current and the plugin is enabled and not unloaded, so a slow fetch cannot leave the patch
@@ -88,4 +79,4 @@ Submission is a pull request adding the repo as a submodule to SteamDeckHomebrew
 the Loader team and tested on SteamOS Stable and Beta (https://wiki.deckbrew.xyz/en/plugin-dev/submitting-plugins).
 The PR template requires ticking "Generative AI was NOT used to write a majority of the code I am submitting", and
 the wiki says "We do not accept any plugin that uses any LLM based code". Until that is settled, releases are
-installed from the GitHub release URL, a zip, or `install.sh`.
+installed from the GitHub Pages URL (see the README), a zip, or `install.sh`.
