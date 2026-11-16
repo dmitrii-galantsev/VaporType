@@ -5,7 +5,16 @@ To update, install the same URL again (README, Install). Learned words and setti
 
 ## 0.3.0 — 2026-11-16
 
-Keyboard v38, engine v10, word pairs v6. Changes since 0.2.8.
+Keyboard v39, engine v11, word pairs v6. Changes since 0.2.8.
+
+### New defaults
+
+- **Learning is your choice.** The first-use card asks only "Learn the words you type?", and "Don't learn" is
+  selected when it opens, so learning comes on only when you pick "Learn my words". Learning is off until then.
+- **Solid keyboard.** The keyboard background and the top strip are opaque by default. Lower Settings → Look → Keyboard
+  background to see the game through it (#1).
+- **Show typed text** is a normal setting, off by default, and no longer part of the first-use card.
+- Installs that already answered the card keep their own learning, typed-text and look settings.
 
 ### Suggestions
 
@@ -32,6 +41,10 @@ Keyboard v38, engine v10, word pairs v6. Changes since 0.2.8.
 
 ### Fixes
 
+- Backspace right after the space or comma that ended a word goes back into that word. Before, the first ending
+  ("comr") was learned as a word and the rest ("e") as another; now only the finished word counts.
+- The typing log no longer writes empty key-geometry records when the keyboard closes.
+
 - Enter, Close and Done that hide the keyboard wait for the pad click to come up. Before, the keyboard closed with
   the click still held and Steam handed that click to the game: a stray mouse click on a pad set to mouse.
 - A held Enter waits for every click pressed during the hold. A trigger used as a pad click could lose the Enter,
@@ -41,6 +54,8 @@ Keyboard v38, engine v10, word pairs v6. Changes since 0.2.8.
 ### Docs
 
 - README shows where the settings are and what Settings → Look → Keyboard background does (#1).
+- The developer docs were cut by about a fifth: each fact is written once and checked against the code, and
+  superseded measurements are gone (the decisions and their reasons stay).
 - `docs/BAKEOFFS.md` has the replay of a real typing log before and after each suggestion change, and what was tried
   and not taken.
 

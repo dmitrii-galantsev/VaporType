@@ -93,8 +93,8 @@ to type.
 ## How it looks
 
 Settings → Look sets the theme (Modern, Steam, OLED), how much the game behind the keyboard is blurred (Glass), and
-how see-through each part is. **Keyboard background** is the backdrop behind the keys: raise it to hide what is
-behind the keyboard, for example in Desktop Mode.
+how see-through each part is. **Keyboard background** is the backdrop behind the keys. It is solid by default; lower it
+to see the game through the keyboard.
 
 ![The Look tab, Keyboard background slider highlighted](docs/media/settings-look.png)
 

@@ -1,6 +1,6 @@
 {
   "name": "vaportype",
-  "version": "0.2.10",
+  "version": "0.3.0",
   "description": "VaporType: swipe typing, word suggestions, autocorrect and Esc/Ctrl/Win/Alt keys for the Steam Deck on-screen keyboard",
   "type": "module",
   "scripts": {
