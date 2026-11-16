@@ -471,12 +471,12 @@ screenshots.
   edge, and a word swiped off the top edge still decodes.
 - `node keyboard/sim/open-bounds-test.mjs` (`MODES_SRC=<file>`): pad presses every 30 ms while the keyboard slides in,
   against stock Steam: once the space bar stops moving every press must hit the aimed key.
-- `node keyboard/sim/twopad-test.mjs`: both pads at once (`twopad.mjs` drives them on an 8 ms tick; a resting thumb is
-  a pad sampled with jitter and no press): simultaneous swipes, commit latency with the other thumb resting,
-  alternating and rolled taps in order, joins and non-joins across the 220 ms window, closing 0-60 ms after a swipe,
-  and bumpers or keys right after a two-pad swipe at 4x CPU (a held bumper, and a 15 ms tap while the words still go
-  out). A `drive()` ends only after every delayed action it scheduled has fired. `twopad-bench.mjs` prints the table in
-  [BAKEOFFS.md](BAKEOFFS.md#two-pads-at-once).
+- `node keyboard/sim/twopad-test.mjs`: both pads at once (`twopad.mjs` drives them on an 8 ms tick; a resting thumb is a
+  pad sampled with jitter and no press): simultaneous swipes, commit latency with the other thumb resting, alternating
+  and rolled taps in order, joins and non-joins across the 220 ms window, closing 0-60 ms after a swipe, and bumpers or
+  keys right after a two-pad swipe at 4x CPU (a held bumper, a 15 ms tap while the words still go out, and on-screen Win
+  and Alt turned on and off again meanwhile, which send nothing). A `drive()` ends only after every delayed action it
+  scheduled has fired. `twopad-bench.mjs` prints the table in [BAKEOFFS.md](BAKEOFFS.md#two-pads-at-once).
 - `node keyboard/sim/leak-test.mjs` (`OPENS`, `SAMPLES`, `CPU`): opens and closes the keyboard 40 times with stock
   Steam and with the patch and counts the handlers registered with `RegisterForControllerAnalogInputMessages`: stock
   leaks one per open of each kind, patched stays at two, still drives both pads and restores everything on `stop()`.

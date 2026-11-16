@@ -781,7 +781,7 @@
 
   function holdKey(code, down) {
     if (down && !state.sent.get(code) && outputPending()) {
-      OUT.pressed.add(code);
+      if (state.bumpers[HELD_MODS.find(([, c]) => c === code)?.[0]]) OUT.pressed.add(code);
       holdLater();
     } else setKey(code, down);
   }
@@ -789,16 +789,20 @@
   function holdLater() {
     if (OUT.restore) return;
     OUT.restore = true;
-    emit(() => {
-      OUT.restore = false;
-      const pressed = [...OUT.pressed];
-      OUT.pressed.clear();
-      syncHeld();
-      const tapped = pressed.filter((code) => !state.sent.get(code) && !OUT.pressed.has(code));
-      if (!tapped.length) return;
-      for (const code of tapped) setKey(code, true);
-      emit(() => syncHeld(), CHORD);
-    }, CHORD);
+    emit(
+      () => {
+        OUT.restore = false;
+        const pressed = [...OUT.pressed];
+        OUT.pressed.clear();
+        syncHeld();
+        const tapped = pressed.filter((code) => !state.sent.get(code) && !OUT.pressed.has(code));
+        if (!tapped.length) return;
+        for (const code of tapped) setKey(code, true);
+        emit(() => syncHeld(), CHORD);
+      },
+      CHORD,
+      "restore",
+    );
   }
 
   function plainOut() {
@@ -1060,6 +1064,10 @@
       OUT.busy = false;
     }
     OUT.queue.splice(0, OUT.queue.length, ...words);
+    if (!words.some((x) => x[2] === "restore")) {
+      OUT.restore = false;
+      OUT.pressed.clear();
+    }
     if (!OUT.busy && !OUT.running) pump();
   }
 

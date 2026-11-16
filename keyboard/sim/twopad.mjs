@@ -103,6 +103,7 @@ function installDriver() {
     btnDown: (b) => vgp("vgp_onbuttondown", b),
     btnUp: (b) => vgp("vgp_onbuttonup", b),
     typeText: (s) => window.__oskTrackpadFix.typeText(s),
+    key: (k) => kb.TypeKeyInternal({ strKey: k }),
   };
   async function reopen() {
     window.__sim.vkm.SetVirtualKeyboardVisible();

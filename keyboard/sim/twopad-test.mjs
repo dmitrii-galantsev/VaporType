@@ -238,6 +238,26 @@ for (const [bn, b, tail, up] of [
   );
 }
 
+{
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+  const got = [];
+  for (const key of ["Meta", "Alt"]) {
+    const { pads, last, want } = await twoSwipes();
+    const out = await drive(pads, last + 300, [
+      [last, "key", key, 0],
+      [last, "key", key, 40],
+      [last, "key", key, 80],
+    ]);
+    got.push([key, keysView(out), want]);
+  }
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+  check(
+    got.every(([, v, want]) => v.trim() === want),
+    "on-screen Win and Alt tapped one-shot, locked and off while the words still go out send no Win or Alt at all",
+    got.map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", "),
+  );
+}
+
 const fresh = errors.slice(bootErrors).filter((e) => !/Transport Error/.test(e));
 check(!fresh.length, "no page errors", fresh.slice(0, 3));
 console.log(failures ? `${failures} FAILED` : "ALL PASS");

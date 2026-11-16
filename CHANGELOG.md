@@ -20,8 +20,8 @@ Keyboard v42, engine v11, word pairs v6. Changes since 0.3.0.
 
 ### Fixes
 
-- A quick LB or RB tap (Ctrl / Alt) made while a swiped word was still being typed could be lost, or leave Ctrl or Alt
-  held. It now goes out once, after the word.
+- A quick LB or RB tap (Ctrl / Alt) made while a swiped word was still being typed, or before Steam had registered the
+  press, could be lost or leave Ctrl or Alt held. It now goes out once, after any queued text.
 
 ## 0.3.0 — 2026-11-16
 
