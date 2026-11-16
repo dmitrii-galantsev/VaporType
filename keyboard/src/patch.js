@@ -93,10 +93,10 @@
     reach: 55,
     deadzone: 100,
     theme: "modern",
-    boardAlpha: 40,
+    boardAlpha: 100,
     keyAlpha: 100,
     spaceAlpha: 30,
-    stripAlpha: 90,
+    stripAlpha: 100,
     blur: 0,
     mode: "bigkeys",
   };
@@ -3544,7 +3544,7 @@
     }
     if (id === "reset_look")
       return addRow(
-        actionRow("reset_look", "Reset look", "Modern theme, default see-through, no blur", () => resetLook()),
+        actionRow("reset_look", "Reset look", "Modern theme, opaque, no blur", () => resetLook()),
         pg,
       );
     if (id === "clear_log") return addRow(clearLogRow(), pg);

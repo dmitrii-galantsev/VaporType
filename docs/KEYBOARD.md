@@ -59,10 +59,10 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 
   | setting | slider | default | what |
   |---|---|---|---|
-  | `boardAlpha` | Keyboard background | 40 | the board between the keys |
+  | `boardAlpha` | Keyboard background | 100 | the board between the keys |
   | `keyAlpha` | Keys | 100 | letter keys; other keys get `keyAlpha - (100 - boardAlpha) / 10` |
   | `spaceAlpha` | Space bar | 30 | the space bar, also while it shows the typed text or "◂ cursor ▸" |
-  | `stripAlpha` | Top strip | 90 | the typed-text field and suggestion row |
+  | `stripAlpha` | Top strip | 100 | the typed-text field and suggestion row |
   | `blur` | Glass (segmented) | Off | Off / Light / Strong: a 6 / 16 px backdrop blur on the board only |
 
   The four alphas are 0-100 in steps of 5 (0 clear, 100 solid). They go to the page as CSS variables (`--osk-ba`,
@@ -73,8 +73,10 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   defaults over black and mid-grey (6.8:1 or more). Steam's dark `BackgroundGlass` under the keyboard is cleared so the
   game shows through. Blur costs 4.5-5.3 ms per frame on the compositor thread in the simulator (software
   compositing, animated backdrop), so it is off by default; whether gamescope lets the overlay's
-  backdrop filter see the game at all is unverified on the Deck. "Reset look" restores the look and all five to their
-  defaults. Older saved settings carry `opacity` (100/90/80, 70 read as 80) instead: it becomes
+  backdrop filter see the game at all is unverified on the Deck. The keyboard is opaque by default since keyboard v39
+  (before: board 40, top strip 90); the space bar keeps 30, which on a solid board reads as a darker key with its
+  label at full contrast. "Reset look" restores the look and all five to their defaults. Saved settings keep their
+  own values. Older saved settings carry `opacity` (100/90/80, 70 read as 80) instead: it becomes
   `boardAlpha = opacity - 50` (OLED + 30; 100 stays 100), `keyAlpha` the old letter-key alpha rounded to 5 (100), and
   `stripAlpha = max(90, opacity)`, so 80 % loads as 30 / 100 / 90 and the space bar takes the default 30. Only the
   default keyboard theme is restyled; a points-shop theme is left alone. One blue, `#0a74d6` (white text 4.69:1),
@@ -635,8 +637,8 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   area hits no key, pad taps, a swiped word, Backspace after a swipe and after a tap, suggestion picks, Enter,
   outside touch, arrows, Tab, Ctrl chord, Esc, 60-character tail, the 30 s gap, hidden under the panel, the switch,
   the space-bar fallback, keyboard reopen, `stop()`. `SHOTS=<dir>` saves screenshots.
-- `node keyboard/sim/look-test.mjs`: computed styles per look: at the defaults the space bar (0.3) is far more
-  see-through than the keys (1.0); board, key, space-bar and top-strip alphas follow their own settings, 0 and 100 give
+- `node keyboard/sim/look-test.mjs`: computed styles per look: at the defaults the board is solid and the space bar
+  (0.3) far more see-through than the keys (1.0); board, key, space-bar and top-strip alphas follow their own settings, 0 and 100 give
   clear and solid; contrast of the space-bar label, "◂ cursor ▸", the typed text in the space bar and in the top strip
   (>= 4.5:1 over black and mid-grey); Glass blur Light / Strong / Off on the board; 60 slider changes rewrite the
   variables sheet 60 times and the look stylesheet never; no DOM changes while idle.
