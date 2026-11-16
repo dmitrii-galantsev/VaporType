@@ -1,5 +1,5 @@
 {
-  "tested": "2026-11-16T09:43:30.207Z",
+  "tested": "2026-11-16T09:50:16.288Z",
   "keyboard": 40,
   "tests": [
     "keyboard/sim/test-all.sh (simulator suites and engine gates)",
@@ -11,7 +11,7 @@
     "package.json": "b9ac970951b682b446f1fa2309a12e35290be4ce943b905f8c7aff3f9b44bbbc",
     "main.py": "1e215363934204f58b023dfaa7497a308b36012d712efd63f3a0d6736dd3ffc6",
     "LICENSE": "5a7445d47bb56558a68eeaa97951332d4e0a0af39b9242ef92d77f7be1835718",
-    "README.md": "0cebe09fb74e97000392f91930c37b93c6223435267c93d88e86f1fe756d2ef6",
+    "README.md": "a4e0d427d0dff894a05004278df7b767506428fcf30bc76a2679dcdfaf386b26",
     "dist/index.js": "c8e4999cab68945806ee790cd7087f20de964f65ddafa66fa88d4b9020a2ca72",
     "dist/index.js.map": "fa2577b56ceaab67209cc05536c215c6e079f7f7d14075212a9ce412eea16f0f",
     "dist/keyboard/manifest.json": "54e5432d9aae34138163eb13bada8a173dcb7efa65ef210ed8ee07b8560d484a",
