@@ -1,7 +1,22 @@
 # Changelog
 
 Every release since 0.2.7. Versions 0.2.9 and 0.2.10 were never published on their own; their changes ship in 0.3.0.
-To update, install the same URL again (README, Install). Learned words and settings are kept.
+To update, install the same URL again (README, Install). Learned words and settings are kept. From 0.3.1 on, VaporType
+updates itself.
+
+## 0.3.1 — 2026-11-16
+
+Keyboard v41, engine v11, word pairs v6. Changes since 0.3.0.
+
+### Updates
+
+- **VaporType updates itself.** It checks GitHub releases about twice a day and installs a new version once the
+  keyboard is closed, never while you type. One short notice says when it did; checks and failures stay quiet.
+- Quick Access → VaporType → Updates shows the installed version and when it last checked, with a button to check or
+  update now and a switch to turn automatic updates off.
+- The keyboard's settings have the same Updates row under System.
+- A release that changes how Decky loads the plugin is not installed on its own: the button reads "Update with Decky…"
+  and Decky asks before installing.
 
 ## 0.3.0 — 2026-11-16
 

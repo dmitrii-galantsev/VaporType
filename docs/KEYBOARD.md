@@ -272,7 +272,7 @@ and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, 
   | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) | Buttons: Slide space bar to move cursor, LB / RB (Ctrl / Alt / Pick words / Off), Enter closes keyboard |
   | Look | Style: Theme (Modern / Steam / OLED), Glass (Off / Light / Strong), Swipe trail, Show typed text, Reset look | Opacity: the live preview, Keyboard background, Keys, Space bar, Top strip |
   | Words | List (Learned (n) / Blocked (n)) across both columns, then 12 words a page with their count | |
-  | System | Privacy: Private mode, Keep typing log, Clear typing log, Forget everything | Controls: a help card for the pads and buttons, the version line |
+  | System | Privacy: Private mode, Keep typing log, Clear typing log, Forget everything | Controls: Updates (plugin only), a help card for the pads and buttons, the version line |
 
   The two columns meet at the middle of the panel, where Steam splits the pads, so each thumb has its own column and
   both reach the tabs and the ✕. Row ids give the row type: `t_<setting>` a toggle (`TOGGLE_LABELS`), `s_<setting>`
@@ -408,6 +408,11 @@ per Steam start (`__oskUserWords`), evaluates `patch.js`, and then, each cycle, 
   if it changes while a save is in flight the host handles the requests again and saves once more before
   acknowledging, so a forget always wins over a save.
 - `takeTypingLog()` lines are appended and confirmed with `ackTypingLog`.
+
+A host may also set `window.__oskHost.updates` before the panel opens: `status()` returns `{text, available}`,
+`check()` and `install()` return promises. With it the System tab has one Updates row: its description is `text`, and
+A checks for an update, or installs the available one (the plugin installs it once the keyboard is closed). Without it
+there is no row; `inject.mjs` sets none.
 
 A forget writes a tombstone first (`forget.json` beside `user-words.json` for `inject.mjs`, `plugin-settings.json` for
 the plugin), listing `user-words.json`, `.bak`, `.tmp` and both log files, then deletes them. Paths that could not be
@@ -550,10 +555,10 @@ screenshots.
   reaching `suggest`/`correct`; typing-log records (kept, autocorrect undone, picked, swipe deleted with the next word,
   an last word of a multi-word line logged with `how: "enter"` and `prev`), versions, settings, geometry, traces, tap
   positions and erased letters; log acknowledgement; private mode (no autocorrect, learning or log; the field's text)
-  and its hold toggle by touch; the version line and new panel controls; Clear typing log and forgetAll requests;
-  closing the keyboard drops queued output (hidden right after the first character goes out, so exactly 1 of 26
-  arrives); `stop()` cancels output, restores the pads' properties and releases Ctrl last; preflight with a missing
-  keyboard method and a missing `SteamClient.Input` call, and rollback when a patching step throws.
+  and its hold toggle by touch; the version line and new panel controls (no Updates row without a host); Clear typing
+  log and forgetAll requests; closing the keyboard drops queued output (hidden right after the first character goes out,
+  so exactly 1 of 26 arrives); `stop()` cancels output, restores the pads' properties and releases Ctrl last; preflight
+  with a missing keyboard method and a missing `SteamClient.Input` call, and rollback when a patching step throws.
 - `node keyboard/sim/chord-test.mjs` (`PATCH=<file>` for another version): Steam+X with X released after the first-use
   card came up (no Backspace repeat once B closes it), a pad and X pressed on the settings panel and released while the
   keyboard was closed, X and B on the open panel staying in the panel, and a pad held on a suggestion chip while the

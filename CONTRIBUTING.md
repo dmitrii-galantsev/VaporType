@@ -70,7 +70,8 @@ pnpm run test:sim                    # everything, in parallel; a failing run ke
 bash keyboard/sim/test-all.sh input-test swipe-test     # only these suites; add plugin-sim after pnpm run build
 node keyboard/sim/test.mjs           # output path: rolled typing, Esc/Ctrl/Win/Alt, chords, stop and re-inject
 node keyboard/sim/swipe-test.mjs     # swipe typing end to end
-node test/plugin-sim.mjs             # the plugin end to end: load, save, disable, restart, forget, unload, call counts
+node test/plugin-sim.mjs             # the plugin end to end: load, save, disable, restart, forget, unload, call counts,
+                                     # the Updates row, an automatic update waiting for a closed keyboard
 node keyboard/sim/media.mjs          # re-record the README GIFs and pictures into docs/media (needs ffmpeg);
                                      # one of them: node keyboard/sim/media.mjs docs/media swipe
 ```

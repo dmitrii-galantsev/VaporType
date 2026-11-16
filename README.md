@@ -22,7 +22,13 @@ Needs [Decky Loader](https://decky.xyz/) 3.0 or newer.
 3. Open the keyboard (**STEAM + X**) and answer the first-use card: **Learn my words** lets it remember your words,
    **Don't learn** keeps learning off.
 
-Install the same URL again to update. Learned words and settings are kept.
+### Updates
+
+VaporType checks GitHub releases about twice a day and installs a new version on its own once the keyboard is closed;
+one short notice says when it did. Quick Access → VaporType → Updates checks now, installs now, or turns automatic
+updates off. The check only asks GitHub for the latest release; nothing else is sent. A release that changes how
+Decky loads the plugin is offered as "Update with Decky…", which asks before installing. Installing the same URL again
+also updates. Learned words and settings are kept.
 
 ## Where the keys are on each pad
 

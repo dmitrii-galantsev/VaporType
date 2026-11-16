@@ -72,6 +72,39 @@ running after disable or unload. Disable and unload stop the patch synchronously
   would wipe them. Decky does not remove `~/homebrew/settings/<plugin>` on uninstall either.
 - Unload, disable and uninstall call the frontend's `onDismount` (`plugin-loader.tsx`, `unloadPlugin`), where the
   plugin calls `stop()`.
+- Ownership (Decky Loader v3.3.1, `browser.py`, `set_plugin_dir_permissions`; `install.sh` does the same): the
+  installer chowns the plugin folder to `deck` and then sets the folder itself and `plugin.json` to root, 755. The
+  backend runs as `deck`, so it can rewrite every file in the folder except `plugin.json` and create, rename and delete
+  inside `dist/`, but it cannot create, rename or delete entries in the plugin folder itself.
+
+### Self-update
+
+`src/updates.ts` checks a minute after the plugin starts and then every 3 h; `check_update(force)` in `main.py` asks
+`api.github.com/repos/dmitrii-galantsev/VaporType/releases/latest` at most once per 12 h (1 h after a failed check)
+unless forced, compares `tag_name` with `package.json` as numbers (never a downgrade or the same version) and keeps the
+result in `plugin-settings.json` (`update`: `latest`, `htmlUrl`, the two asset URLs, `checkedAt`, `error`, and
+`needsDecky` or `failed` for a version). `autoUpdate` (default on) is set with `set_auto_update`; `get_update_status`
+returns all of it. Failed checks only change the status line.
+
+`install_update(version, auto)` downloads `VaporType.zip` and its `.sha256` (zip at most 32 MB), checks the hash and
+reads the zip in memory: exactly one top folder whose `plugin.json` names VaporType, no absolute, `..`, backslash or
+link entries, and a `package.json` with the requested version. If its `plugin.json` differs from the installed one in
+anything but `publish`, or it has a top-level file or folder the installed copy lacks, it changes nothing and returns
+`needsDecky` with the GitHub Pages URL and the hash (Decky's own downloader cannot follow GitHub's release redirect);
+the Quick Access button "Update with Decky…" then calls `utilities/install_plugin` with install type 2 (`UPDATE`) and
+Decky asks before installing. Otherwise it saves the current `dist/` and top-level files (memory and
+`~/homebrew/data/vaportype/update-backup.zip`), writes each `dist/` file through a temp file and a rename, removes
+`dist/` files the new zip lacks, rewrites the other top-level files in place (never `plugin.json`) and `main.py` last.
+Any error puts every saved file back and is reported in the status line; it is not retried automatically for 12 h.
+Success records `updated: {from, to, at, auto}`, which the new version reads once (`take_update_record`) and turns into
+one toast when the update was automatic.
+
+The frontend installs automatically only when `autoUpdate` is on, the update needs no Decky prompt, and the keyboard
+is closed (`keyboardOpen()`, polled every 5 s); it saves words and the typing log first (`syncNow`), then calls
+`loader/reload_plugin` through `DeckyBackend`, which stops the old backend and frontend and imports the new ones. A
+manual install from either panel waits for a closed keyboard the same way. Checks and installs use their own backend
+lock and do not go through the save queue. A rewrite of `main.py` that is cut off (power loss mid-write) would leave
+the backend unloadable until reinstalled; the file is written in one call and synced, as the last step.
 
 ## Store
 
