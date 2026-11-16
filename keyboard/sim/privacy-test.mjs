@@ -528,6 +528,97 @@ async function typingLogOff() {
   await page.close();
 }
 
+async function backIntoWord() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("good");
+  const before = await h.user();
+  await h.word("track");
+  await h.tap("Backspace");
+  await h.word("ed");
+  for (let i = 0; i < 2; i++) {
+    await h.word("zqvxplorr");
+    await h.tap("Backspace");
+    await h.tap("Backspace");
+    await h.tap(" ");
+  }
+  await h.word("you", ",");
+  await h.tap("Backspace");
+  await h.word("r");
+  await h.tap("Enter");
+  await h.word("hell");
+  await h.tap("Backspace");
+  await h.word("o");
+  await h.F(() => window.__oskTrackpadFix.flushLog());
+  const raw = await h.F(() => window.__oskTrackpadFix.takeTypingLog());
+  const words = JSON.parse(raw ?? '{"lines":[]}')
+    .lines.map((l) => JSON.parse(l))
+    .filter((r) => r.type === "word");
+  const recs = words.map((r) => `${r.committed}:${r.how}${r.prev ? `<${r.prev}` : ""}`);
+  const erased = words.map((r) => (r.erased ?? []).map((e) => e.c).join(""));
+  const after = await h.user();
+  const known = await h.F(() => [window.__oskEngine.known("zqvxplorr"), window.__oskEngine.known("zqvxplor")]);
+  const out = await h.text();
+  check(
+    JSON.stringify(recs) ===
+      JSON.stringify([
+        "good:space",
+        "tracked:space<good",
+        "zqvxplor:space<tracked",
+        "zqvxplor:space<zqvxplor",
+        "your:space<zqvxplor",
+        "hello:space",
+      ]) &&
+      erased.join() === ",,r,r,," &&
+      !after.bigrams["^ hell"] &&
+      !!after.bigrams["^ hello"] &&
+      after.words.track?.c === before.words.track?.c &&
+      after.words.you?.c === before.words.you?.c &&
+      !after.bigrams["good track"] &&
+      !!after.bigrams["good tracked"] &&
+      !known[0] &&
+      known[1] &&
+      out.endsWith("good track ⌫ed zqvxplorr ⌫⌫ zqvxplorr ⌫⌫ you,⌫r ⏎hell ⌫o "),
+    "Backspace over the space or comma after a typed word takes the word back: the letters typed next finish it, and the first ending is neither logged nor learned",
+    {
+      recs,
+      erased,
+      track: [before.words.track, after.words.track],
+      known,
+      starts: Object.keys(after.bigrams).filter((k) => k.startsWith("^")),
+      out,
+    },
+  );
+  await page.close();
+}
+
+async function geoOnClose() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("typingLog", true);
+  await h.tap(" ");
+  await h.word("good");
+  await h.word("morning");
+  await h.kbEval((kb) => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    kb.m_keyboardDiv = null;
+    window.__oskTrackpadFix.tickNow();
+  });
+  await settle(page);
+  const raw = await h.F(() => window.__oskTrackpadFix.takeTypingLog());
+  const recs = JSON.parse(raw ?? '{"lines":[]}').lines.map((l) => JSON.parse(l));
+  const geos = recs.filter((r) => r.type === "geo").map((r) => Object.keys(r.keys ?? {}).length);
+  const words = recs.filter((r) => r.type === "word").map((r) => r.committed);
+  check(
+    words.join() === "good,morning" && geos.length === 1 && geos[0] === 26,
+    "a word logged after the keyboard closed gets no empty key geometry record",
+    { words, geos },
+  );
+  await page.close();
+}
+
 const blocks = [
   privateBoundary,
   enterEnded,
@@ -535,6 +626,8 @@ const blocks = [
   enterLast,
   stopEnded,
   staleLine,
+  backIntoWord,
+  geoOnClose,
   lineMarker,
   enterPrivate,
   forgetProtocol,

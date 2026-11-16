@@ -215,7 +215,10 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   Enter clears the previous word. The only word of a line (nothing typed since the last Enter, closing or reset) is
   never learned when Enter ends it (no word, phrase or pair counts, no new-word count), so a password typed alone and
   submitted leaves nothing behind. A word left in the buffer when the keyboard closes, hides or stops is never
-  learned. Backspace on an empty buffer takes one off the line's word count, and a pause of 30 s or an outside tap resets it with the rest of the
+  learned. Backspace right after the space or punctuation that ended a typed word takes the word back: what it
+  learned (the word, its pair, its line start, a new-word count) is undone, its log record is dropped, and the letters
+  typed next continue it, so "comr", Backspace twice, "e" is learned and logged once as "come". Any other Backspace on
+  an empty buffer takes one off the line's word count, and a pause of 30 s or an outside tap resets it with the rest of the
   tracker, so a word retyped over deleted ones or typed after a pause is not counted as following earlier ones. A word not in the dictionary is learned the second time it is typed by
   tapping and ended with a space, punctuation or, after another word on the line, Enter within one Steam session. Only letters with an optional apostrophe, 2-24 long,
   are learned; pairs of consecutive known words are counted for next-word suggestions. Every field is
@@ -443,7 +446,8 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   with the word typed next, the intended word). A tapped word also carries `erased`, the letters Backspace took out
   of it before it was finished (each with its tap position, at most 24), and a pick made with a bumper carries `via`
   ("LB" or "RB"). `env` records carry the versions and key settings and `geo` records
-  the key geometry whenever they change. A word record carries `how` (`space`, `punct`, `stop` for `.` `!` `?`,
+  the key geometry whenever it changes (none while the keyboard has no keys on screen; logs before keyboard v39 have
+  an empty `geo` before a word flushed after the keyboard closed, and the benches skip it). A word record carries `how` (`space`, `punct`, `stop` for `.` `!` `?`,
   `swipe`, `enter`) and `prev`, the previous word the engine used, when there is one. Same privacy rule as learning: a
   word ended by Enter is logged when the line already had a word; the only word of a line is logged (`lone: true`,
   `how: "enter"`) only if the engine already knows it, and an unknown one leaves nothing. A word left in the buffer
@@ -656,7 +660,9 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   learned (known word, repeated password-like word), with the typing log on: lone known word logged with `lone`, lone
   unknown word and a word left at close not logged, the last word of a line logged with `prev` and learned with its
   pair (an unknown one on its second use), `.` logged as `stop` and breaking the pair, a word typed alone after a
-  pause still a lone word, line markers written once and
+  pause still a lone word, Backspace over the space or comma after a typed word taking the word back (one record and
+  one learned use for the finished word, none for the first ending or the letters typed after), no empty key geometry
+  for a word logged after the keyboard closed, line markers written once and
   never doubled, and nothing logged or learned in private mode; forget requests pending until
   `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (Keep off by
   pad, Turn on by D-pad and A, existing users skip it), the VaporType version line (and no wordmark), and the typing log off

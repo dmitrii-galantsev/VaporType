@@ -32,7 +32,8 @@ let geo = null,
   prev = null,
   last = 0;
 for (const r of rows) {
-  if (r.type === "geo" && r.keys) geo = Object.fromEntries(Object.entries(r.keys).map(([k, [x, y, w, h]]) => [k, { x, y, w, h }]));
+  if (r.type === "geo" && r.keys && Object.keys(r.keys).length)
+    geo = Object.fromEntries(Object.entries(r.keys).map(([k, [x, y, w, h]]) => [k, { x, y, w, h }]));
   if (r.type === "line") {
     prev = null;
     continue;
