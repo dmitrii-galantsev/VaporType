@@ -99,9 +99,16 @@ def tls_context():
     return ssl.create_default_context(cafile=certifi.where())
 
 
+def require_https(url):
+    if not os.environ.get("VAPORTYPE_UPDATE_API") and not str(url or "").startswith("https://"):
+        raise ValueError(f"refusing a non-HTTPS address: {url}")
+
+
 def http_get(url, limit):
+    require_https(url)
     req = urllib.request.Request(url, headers={"User-Agent": f"{NAME}-updater", "Accept": "application/vnd.github+json, */*"})
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT, context=tls_context()) as r:
+        require_https(r.geturl())
         data = r.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"{url} is larger than {limit} bytes")
@@ -124,7 +131,8 @@ def zip_tree(data, version):
     files = {}
     for info in z.infolist():
         name = info.filename
-        if name.startswith("/") or "\\" in name or ".." in name.split("/") or ":" in name:
+        segs = (name[:-1] if name.endswith("/") else name).split("/")
+        if name.startswith("/") or "\\" in name or ":" in name or any(seg in ("", ".", "..") for seg in segs):
             raise ValueError(f"unsafe path in zip: {name}")
         if (info.external_attr >> 16) & 0o170000 == 0o120000:
             raise ValueError(f"link in zip: {name}")
@@ -155,6 +163,8 @@ def needs_decky(tree, root):
         return "plugin.json changed"
     for rel in tree:
         first = rel.split("/", 1)[0]
+        if "/" in rel and first != "dist":
+            return f"new files in {first}"
         path = os.path.join(root, first)
         if "/" in rel and not os.path.isdir(path):
             return f"new folder {first}"
@@ -314,7 +324,7 @@ class Plugin:
                     break
             prefs = self._prefs()
             try:
-                installed = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(os.path.join(plugin_dir(), "plugin.json"))))
+                installed = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(os.path.join(plugin_dir(), "package.json"))))
             except OSError:
                 installed = None
             version = (read_json(os.path.join(plugin_dir(), "package.json")) or {}).get("version")
@@ -480,16 +490,15 @@ class Plugin:
         if got != want:
             raise ValueError(f"checksum mismatch: expected {want[:12]}, got {got[:12]}")
         tree = zip_tree(data, version)
+        try:
+            compile(tree["main.py"], "main.py", "exec")
+        except (SyntaxError, ValueError) as e:
+            raise ValueError(f"main.py in {version} does not compile: {e}") from e
         root = plugin_dir()
         reason = needs_decky(tree, root)
         if reason:
             return {"ok": False, "needsDecky": True, "reason": reason, "url": PAGES_ZIP, "sha256": got, "version": version}
         snap = snapshot(root, tree)
-        backup = runtime_path("update-backup.zip")
-        os.makedirs(os.path.dirname(backup), exist_ok=True)
-        with zipfile.ZipFile(backup, "w", zipfile.ZIP_DEFLATED) as z:
-            for rel, b in snap.items():
-                z.writestr(rel, b)
         try:
             apply_tree(root, tree)
         except Exception as e:

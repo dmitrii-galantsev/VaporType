@@ -248,11 +248,13 @@ def package_tree(version, main_extra=""):
     return tree
 
 
-def zip_of(tree, top="vaportype"):
+def zip_of(tree, top="vaportype", raw=None):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         for rel, data in tree.items():
             z.writestr(rel if rel.startswith(("/", "..")) or top is None else f"{top}/{rel}", data)
+        for name, data in (raw or {}).items():
+            z.writestr(name, data)
     return buf.getvalue()
 
 
@@ -384,6 +386,45 @@ async def updates():
     attempt(zip_of(flags))
     r4 = await install()
     check("update: changed plugin.json flags need Decky's installer", r4.get("needsDecky") and state_of(root) == before, r4)
+    for name in ("vaportype//x.js", "vaportype/./main.py", "vaportype/dist/../main.py"):
+        tree = package_tree("0.3.1")
+        attempt(zip_of(tree, raw={name: b"x"}))
+        rs = await install()
+        check(f"update: a zip entry {name} is refused", not rs["ok"] and "unsafe" in rs.get("error", "") and state_of(root) == before, rs)
+    os.makedirs(os.path.join(root, "licenses"), exist_ok=True)
+    nested = package_tree("0.3.1")
+    nested["licenses/NEW"] = b"new"
+    attempt(zip_of(nested))
+    r4b = await install()
+    shutil.rmtree(os.path.join(root, "licenses"))
+    check("update: new files in a folder other than dist need Decky's installer", r4b.get("needsDecky") and state_of(root) == before, r4b)
+    broken = package_tree("0.3.1", "\ndef broken(:\n")
+    attempt(zip_of(broken))
+    r4c = await install()
+    s6c = await p.get_update_status()
+    check(
+        "update: a main.py that does not compile is refused, recorded as failed and nothing changes",
+        not r4c["ok"] and "does not compile" in r4c["error"] and s6c["failed"]["version"] == "0.3.1" and state_of(root) == before,
+        r4c,
+    )
+    attempt(zip_of(package_tree("0.3.1")))
+    api = os.environ.pop("VAPORTYPE_UPDATE_API")
+    real_api = main.RELEASES_API
+    main.RELEASES_API = srv.base + "/api"
+    hits = len(srv.hits)
+    try:
+        s6d = await p.check_update(True)
+        u = p._prefs()["update"]
+        u.update({"latest": "0.3.1", "zip": srv.base + "/zip", "sha": srv.base + "/sha"})
+        r4d = await p.install_update("0.3.1")
+    finally:
+        main.RELEASES_API = real_api
+        os.environ["VAPORTYPE_UPDATE_API"] = api
+    check(
+        "update: without the test override a plain-HTTP API or asset address is refused before any request",
+        "non-HTTPS" in (s6d["error"] or "") and not r4d["ok"] and "non-HTTPS" in r4d["error"] and len(srv.hits) == hits,
+        [s6d["error"], r4d],
+    )
 
     real = main.write_in_place
 
@@ -433,6 +474,14 @@ async def updates():
         and json.loads(after["package.json"])["version"] == "0.3.1"
         and all(after.get(rel) == data for rel, data in new.items() if rel != "plugin.json"),
         sorted(set(after) ^ set(new)),
+    )
+    os.utime(os.path.join(root, "plugin.json"), (0, 0))
+    os.chmod(root, 0o755)
+    installed = (await p.load_state())["install"]
+    check(
+        "update: the install date follows package.json, which every update rewrites",
+        installed["date"] == time.strftime("%Y-%m-%d"),
+        installed,
     )
     s8 = await p.get_update_status()
     check("update: after the update it is up to date", s8["current"] == "0.3.1" and not s8["available"] and not s8["failed"], s8)
