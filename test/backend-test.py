@@ -1,10 +1,16 @@
 import asyncio
+import hashlib
+import http.server
 import importlib
+import io
 import json
 import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
+import zipfile
 
 sys.dont_write_bytecode = True
 work = tempfile.mkdtemp(prefix="vaportype-backend-")
@@ -215,7 +221,236 @@ async def run():
     )
 
 
+ROOT = os.path.dirname(here)
+TOP_FILES = ["plugin.json", "package.json", "main.py", "LICENSE", "README.md", "test-record.json"]
+
+
+def package_tree(version, main_extra=""):
+    tree = {}
+    for f in TOP_FILES:
+        with open(os.path.join(ROOT, f), "rb") as fh:
+            tree[f] = fh.read()
+    pkg = json.loads(tree["package.json"])
+    pkg["version"] = version
+    tree["package.json"] = json.dumps(pkg, indent=2).encode()
+    tree["main.py"] += main_extra.encode()
+    dist = os.path.join(ROOT, "dist")
+    if os.path.isfile(os.path.join(dist, "index.js")):
+        for d, _, names in os.walk(dist):
+            for n in names:
+                full = os.path.join(d, n)
+                with open(full, "rb") as fh:
+                    tree[os.path.relpath(full, ROOT).replace(os.sep, "/")] = fh.read()
+    else:
+        tree["dist/index.js"] = b"export default 1;"
+        tree["dist/keyboard/patch.js"] = b"0;"
+    tree["dist/index.js"] += f"//{version}".encode()
+    return tree
+
+
+def zip_of(tree, top="vaportype"):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for rel, data in tree.items():
+            z.writestr(rel if rel.startswith(("/", "..")) or top is None else f"{top}/{rel}", data)
+    return buf.getvalue()
+
+
+class Server:
+    def __init__(self):
+        self.routes = {}
+        self.hits = []
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                owner.hits.append(self.path)
+                body = owner.routes.get(self.path)
+                if body is None:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def release(self, version, zdata, sha=None):
+        self.routes["/api"] = json.dumps(
+            {
+                "tag_name": f"v{version}",
+                "html_url": f"{self.base}/release",
+                "assets": [
+                    {"name": "VaporType.zip", "browser_download_url": f"{self.base}/zip"},
+                    {"name": "VaporType.zip.sha256", "browser_download_url": f"{self.base}/sha"},
+                ],
+            }
+        ).encode()
+        self.routes["/zip"] = zdata
+        self.routes["/sha"] = f"{sha or hashlib.sha256(zdata).hexdigest()}  VaporType.zip\n".encode()
+
+
+def lay_out(root, tree):
+    for rel, data in tree.items():
+        path = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+
+
+def state_of(root):
+    out = {}
+    for d, _, names in os.walk(root):
+        for n in names:
+            full = os.path.join(d, n)
+            with open(full, "rb") as f:
+                out[os.path.relpath(full, root)] = f.read()
+    return out
+
+
+async def updates():
+    srv = Server()
+    os.environ["VAPORTYPE_UPDATE_API"] = srv.base + "/api"
+    root = os.path.join(work, "plugins", "VaporType")
+    old = package_tree("0.3.0")
+    old["dist/keyboard/stale.js"] = b"stale"
+    lay_out(root, old)
+    main.plugin_dir = lambda: root
+    p = main.Plugin()
+
+    srv.release("0.3.0", zip_of(package_tree("0.3.0")))
+    s1 = await p.check_update(False)
+    check(
+        "update: the same version is up to date", s1["current"] == "0.3.0" and s1["available"] is False and not s1["error"], json.dumps(s1)
+    )
+    srv.release("0.3.1", zip_of(package_tree("0.3.1")))
+    hits = len(srv.hits)
+    s2 = await p.check_update(False)
+    check("update: a second check within 12 h makes no request", len(srv.hits) == hits and s2["available"] is False)
+    s3 = await p.check_update(True)
+    check("update: a forced check finds the newer release", s3["available"] is True and s3["latest"] == "0.3.1", json.dumps(s3))
+    s3b = await main.Plugin().get_update_status()
+    check("update: the result is kept in plugin-settings.json", s3b["latest"] == "0.3.1" and s3b["checkedAt"], json.dumps(s3b))
+    p._prefs()["update"]["checkedAt"] = time.time() - 13 * 3600
+    srv.release("0.2.9", zip_of(package_tree("0.2.9")))
+    s4 = await p.check_update(False)
+    d4 = await p.install_update("0.2.9")
+    check("update: an older release is not offered or installed", s4["available"] is False and d4["ok"] is False, json.dumps(d4))
+    srv.routes.pop("/api")
+    s5 = await p.check_update(True)
+    check("update: a failed check is recorded quietly", bool(s5["error"]) and s5["available"] is False, json.dumps(s5["error"]))
+
+    def attempt(zdata, sha=None):
+        srv.release("0.3.1", zdata, sha)
+
+    async def install():
+        await p.check_update(True)
+        return await p.install_update("0.3.1")
+
+    before = state_of(root)
+    attempt(zip_of(package_tree("0.3.1")), sha="0" * 64)
+    r1 = await install()
+    check(
+        "update: a checksum mismatch is refused and nothing changes",
+        not r1["ok"] and "checksum" in r1["error"] and state_of(root) == before,
+        r1,
+    )
+    bad = package_tree("0.3.1")
+    bad["../evil.py"] = b"x"
+    attempt(zip_of(bad))
+    r2 = await install()
+    check("update: a zip with an unsafe path is refused", not r2["ok"] and "unsafe" in r2["error"] and state_of(root) == before, r2)
+    extra = package_tree("0.3.1")
+    extra["NEWS.md"] = b"new"
+    attempt(zip_of(extra))
+    r3 = await install()
+    s6 = await p.get_update_status()
+    check(
+        "update: a new top-level file needs Decky's installer and touches nothing",
+        r3.get("needsDecky") and r3["sha256"] and r3["url"] and state_of(root) == before and s6["needsDecky"]["version"] == "0.3.1",
+        r3,
+    )
+    flags = package_tree("0.3.1")
+    meta = json.loads(flags["plugin.json"])
+    meta["flags"] = ["root"]
+    flags["plugin.json"] = json.dumps(meta).encode()
+    attempt(zip_of(flags))
+    r4 = await install()
+    check("update: changed plugin.json flags need Decky's installer", r4.get("needsDecky") and state_of(root) == before, r4)
+
+    real = main.write_in_place
+
+    def failing(path, data):
+        if path.endswith("main.py"):
+            raise PermissionError(13, "Permission denied", path)
+        return real(path, data)
+
+    attempt(zip_of(package_tree("0.3.1")))
+    main.write_in_place = failing
+    try:
+        r5 = await install()
+    finally:
+        main.write_in_place = real
+    s7 = await p.get_update_status()
+    check(
+        "update: a failure while applying restores every file and is shown in the status",
+        not r5["ok"] and "undone" in r5["error"] and state_of(root) == before and s7["failed"]["version"] == "0.3.1",
+        r5,
+    )
+
+    new = package_tree("0.3.1", "\nUPDATED = True\n")
+    meta = json.loads(new["plugin.json"])
+    meta["publish"] = {**meta.get("publish", {}), "description": "changed"}
+    new["plugin.json"] = json.dumps(meta).encode()
+    new.pop("dist/keyboard/patch.js", None)
+    attempt(zip_of(new))
+    top_before = {n: os.stat(os.path.join(root, n)).st_ino for n in os.listdir(root)}
+    os.chmod(root, 0o555)
+    try:
+        r6 = await install()
+    finally:
+        os.chmod(root, 0o755)
+    after = state_of(root)
+    top_after = {n: os.stat(os.path.join(root, n)).st_ino for n in os.listdir(root)}
+    check(
+        "update: a publish-only plugin.json change is applied in place with the folder read-only",
+        r6["ok"] is True and top_after == top_before,
+        r6,
+    )
+    check(
+        "update: dist and main.py are replaced, stale dist files removed, plugin.json kept",
+        after.get("main.py") == new["main.py"]
+        and after.get("dist/index.js") == new["dist/index.js"]
+        and "dist/keyboard/stale.js" not in after
+        and after["plugin.json"] == before["plugin.json"]
+        and json.loads(after["package.json"])["version"] == "0.3.1"
+        and all(after.get(rel) == data for rel, data in new.items() if rel != "plugin.json"),
+        sorted(set(after) ^ set(new)),
+    )
+    s8 = await p.get_update_status()
+    check("update: after the update it is up to date", s8["current"] == "0.3.1" and not s8["available"] and not s8["failed"], s8)
+    rec1 = await main.Plugin().take_update_record()
+    rec2 = await main.Plugin().take_update_record()
+    check(
+        "update: the record of the update is read once", rec1 and rec1["from"] == "0.3.0" and rec1["to"] == "0.3.1" and rec2 is None, rec1
+    )
+    auto = await main.Plugin().set_auto_update(False)
+    check(
+        "update: automatic updates can be turned off and the choice is kept",
+        auto is False and (await main.Plugin().get_update_status())["autoUpdate"] is False,
+    )
+    srv.httpd.shutdown()
+
+
 asyncio.run(run())
+asyncio.run(updates())
 shutil.rmtree(work, ignore_errors=True)
 print("ALL PASS" if not failures else f"{failures} failed")
 sys.exit(1 if failures else 0)
