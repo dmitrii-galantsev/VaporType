@@ -76,12 +76,12 @@
     swipe: true,
     autocorrect: true,
     suggestions: true,
-    learn: true,
+    learn: false,
     trail: true,
     autoSpace: true,
     removeAutoSpace: true,
     bumpers: true,
-    echo: true,
+    echo: false,
     slideCursor: true,
     enterCloses: false,
     privateMode: false,
@@ -385,11 +385,7 @@
   let settingsAt = window.__oskSettingsAt ?? 0;
   const settings = (window.__oskSettings = cleanSettings(window.__oskSettings ?? loadSettings()));
   const eff = (name) =>
-    settings.privateMode && PRIVATE_OFF.has(name)
-      ? false
-      : !settings.consent && (name === "learn" || name === "echo")
-        ? false
-        : settings[name];
+    settings.privateMode && PRIVATE_OFF.has(name) ? false : !settings.consent && name === "learn" ? false : settings[name];
   const SUPPORTED_LAYOUTS = new Set(["qwerty", "qwerty_int"]);
   const layoutSupported = (layout = state.layoutApi?.current?.()) => SUPPORTED_LAYOUTS.has(layout?.name);
   state.settings = settings;
@@ -3246,7 +3242,7 @@
 
   function focusFirst() {
     if (!P.open) return;
-    if (P.tab === "consent") return setFocus(SET + "consent_on");
+    if (P.tab === "consent") return setFocus(SET + "consent_off");
     setFocus(P.pages[P.tab]?.rows[0]?.key ?? SET + `tab_${P.tab}`);
   }
 
@@ -3444,22 +3440,24 @@
     if (P.consentEl) return;
     const card = el("osk-set-consent");
     card.appendChild(
-      el("osk-set-consent-text", "VaporType can learn words you type and show what you typed above the keys. Both stay on this Deck."),
+      el(
+        "osk-set-consent-text",
+        "Learn the words you type? VaporType can remember new words and the words you often type together, to suggest them. They stay on this Deck.",
+      ),
     );
     const row = el("osk-set-consent-buttons");
     const answer = (on) => () => {
       setSetting("learn", on);
-      setSetting("echo", on);
       setSetting("consent", true);
       closePanel();
     };
     for (const [id, cls, text, on] of [
-      ["consent_on", "osk-set-primary", "Turn on", true],
-      ["consent_off", "osk-set-secondary", "Keep off", false],
+      ["consent_on", "osk-set-primary", "Learn my words", true],
+      ["consent_off", "osk-set-secondary", "Don't learn", false],
     ])
       row.appendChild(addRow({ key: SET + id, el: keyEl(id, cls, text), type: "consent", act: answer(on) }).el);
     card.appendChild(row);
-    const hint = el("osk-set-consent-hint", "You can change both later: hold ");
+    const hint = el("osk-set-consent-hint", "You can change this later: hold ");
     hint.append(el("osk-gear"), " (the emoji key) for settings.");
     card.append(hint, el("osk-set-consent-later", "B: later"));
     P.consentEl = card;

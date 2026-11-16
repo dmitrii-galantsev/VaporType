@@ -1065,7 +1065,9 @@ await scenario("without the file the settings come back from localStorage", asyn
   return {
     ok:
       Object.entries(s).every(([k, v]) =>
-        ["trail", "enterCloses", "privateMode", "typingLog", "logFile"].includes(k) ? v === false : typeof v !== "boolean" || v === true,
+        ["trail", "enterCloses", "privateMode", "typingLog", "logFile", "learn", "echo"].includes(k)
+          ? v === false
+          : typeof v !== "boolean" || v === true,
       ) &&
       s.reach === 55 &&
       sug,

@@ -424,10 +424,12 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   the next key, pad or touch input, when the panel opens, or after 8 s. The gear is one SVG used on the emoji key, in
   the tip and on the first-use card.
 - **First use.** With no saved settings anywhere (`__oskUserWords.settings` and `localStorage`), the first keyboard
-  open shows a card: "VaporType can learn words you type and show what you typed above the keys. Both stay on this
-  Deck." with Turn on / Keep off (pad, touch, D-pad and A), a gear hint and "B: later". Until it is answered, learning and the typed-text field
-  are off; the answer sets both and is saved as `consent`. B or Close postpones it until the keyboard is next
-  opened. Users with saved settings never see it and keep their settings. Pads, touch and mouse click the controls
+  open shows a card: "Learn the words you type? VaporType can remember new words and the words you often type
+  together, to suggest them. They stay on this Deck." with Learn my words / Don't learn (pad, touch, D-pad and A), a
+  gear hint and "B: later". The focus starts on Don't learn, so learning comes on only when the user moves to Learn
+  my words and presses it. Learning is off by default and until the card is answered; the answer sets `learn` and is
+  saved as `consent`. B or Close postpones it until the keyboard is next opened. Show typed text (`echo`) is an
+  ordinary setting, off by default. Users with saved settings never see it and keep their settings. Pads, touch and mouse click the controls
   (they carry `data-key="OSKSet_*"`, so Steam's pad hit-test finds them); B, ✕ or hiding the keyboard closes the
   panel. Auto-repeats never repeat a tab or page step. A trigger the user has set to click the pad (Steam's trigger-as-click) still clicks the pad's pointer instead.
   Steam delivers the sticks (as D-pad directions), bumpers (5, 6) and triggers (7, 8) as digital `vgp_onbuttondown` /
@@ -666,12 +668,13 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
   one learned use for the finished word, none for the first ending or the letters typed after), no empty key geometry
   for a word logged after the keyboard closed, line markers written once and
   never doubled, and nothing logged or learned in private mode; forget requests pending until
-  `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (Keep off by
-  pad, Turn on by D-pad and A, existing users skip it), the VaporType version line (and no wordmark), and the typing log off
+  `ackRequests(rev)` with `forgetGen`, the French layout behaving like stock Steam, `hostAcks` keeping a forget through six unacknowledged takes while an unannounced host clears after three, the first-use card (only about learning,
+  Don't learn focused and taken by A, Learn my words by D-pad and A turning learning on, Show typed text off, existing
+  users skip it and keep their learning, typed-text and look settings), the VaporType version line (and no wordmark), and the typing log off
   by default with nothing typed kept and `keyboardOpen()` following the keyboard. `inject-test.mjs` adds a forget
   whose replacement save fails (`user-words.json.tmp` undeletable): not acknowledged, no forgotten word on disk or
   after a restart, finished once the fault clears; a forget kept pending through five failed deliveries (`.bak` made
-  undeletable) and delivered once it can be deleted; and a forget during an in-flight save. `run.mjs`'s `inject()` answers the first-use card for every suite unless called with
+  undeletable) and delivered once it can be deleted; and a forget during an in-flight save. `run.mjs`'s `inject()` answers the first-use card with Learn my words for every suite unless called with
   `{ consent: false }`, and `openSim()` waits until the keyboard has slid into view.
 - `node keyboard/sim/ux-test.mjs`: look and flows: slide arrow by direction, gear badge size and backing, focus on the first control after a pad hold, no box-shadow or
   outline on any key, chip, panel control or the field, "added: word" after "+ add", tip closed by the panel and drawn

@@ -19,7 +19,8 @@ Needs [Decky Loader](https://decky.xyz/) 3.0 or newer.
 1. **...** → Decky → gear icon → General → turn on **Developer mode**.
 2. Developer → **Install Plugin from URL**: enter `https://dmitrii-galantsev.github.io/VaporType/VaporType.zip`,
    press **Install** and confirm.
-3. Open the keyboard (**STEAM + X**) and answer the first-use card.
+3. Open the keyboard (**STEAM + X**) and answer the first-use card: **Learn my words** lets it remember your words,
+   **Don't learn** keeps learning off.
 
 Install the same URL again to update. Learned words and settings are kept.
 
@@ -89,8 +90,8 @@ to type.
 
 ## Privacy
 
-Nothing leaves the Deck. Learning new words and showing the typed text above the keys stay off until you turn them
-on in the first-use card.
+Nothing leaves the Deck. Learning stays off until you choose Learn my words on the first-use card or turn on Learn
+new words in Settings. Show typed text, which shows what you type above the keys, is off until you turn it on.
 
 - Learned words are kept in `~/homebrew/settings/vaportype/` and in Steam's local storage. Settings → Words lists
   them; tap one to forget it.

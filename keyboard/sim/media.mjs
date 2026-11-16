@@ -250,7 +250,7 @@ async function boot({ chat = CHAT, panel = true, settings = {} } = {}) {
   await page.evaluate((s) => {
     window.__oskUserWords = null;
     window.localStorage.clear();
-    window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, tipShown: true, theme: "modern", ...s }));
+    window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, learn: true, tipShown: true, theme: "modern", ...s }));
   }, settings);
   await inject(page, read("patch.js"));
   await waitKeyboard(page);

@@ -14,6 +14,7 @@ await page.evaluate(["swipe/words.js", "swipe/lm.js", "swipe/engine.js", "modes.
 await page.evaluate(() => {
   window.__oskUserWords = null;
   window.localStorage.clear();
+  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ echo: true }));
 });
 results.push(`inject: ${await inject(page, read("patch.js"))}`);
 

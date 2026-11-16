@@ -416,9 +416,12 @@ async function consent() {
     on: !!document.querySelector('[data-key="OSKSet_consent_on"]'),
     off: !!document.querySelector('[data-key="OSKSet_consent_off"]'),
     learn: window.__oskTrackpadFix.settings.consent,
+    focus: window.__oskTrackpadFix.panel.focus,
+    echo: window.__oskTrackpadFix.settings.echo,
   }));
   const effBefore = await h.F(() => window.__oskTrackpadFix.effective?.("learn"));
-  await h.tap("OSKSet_consent_off");
+  await h.vgp("vgp_onbuttondown", 1);
+  await h.vgp("vgp_onbuttonup", 1);
   await settle(page);
   const s1 = await h.F(() => window.__oskTrackpadFix.settings);
   await h.tap(" ");
@@ -434,7 +437,14 @@ async function consent() {
     card.open &&
       (card.text.match(/VaporType/g) ?? []).length === 1 &&
       /B: later/.test(card.text) &&
-      /VaporType can learn words you type and show what you typed above the keys\. Both stay on this Deck\./.test(card.text) &&
+      /Learn the words you type\? VaporType can remember new words and the words you often type together, to suggest them\. They stay on this Deck\./.test(
+        card.text,
+      ) &&
+      /Learn my words/.test(card.text) &&
+      /Don't learn/.test(card.text) &&
+      !/typed text|above the keys/.test(card.text) &&
+      card.focus === "OSKSet_consent_off" &&
+      card.echo === false &&
       card.on &&
       card.off &&
       effBefore === false &&
@@ -444,7 +454,7 @@ async function consent() {
       !echo &&
       !known &&
       saved?.consent === true,
-    "first use: consent card; Keep off by pad leaves learning and the typed-text field off, and the answer is saved",
+    "first use: the card asks only about learning with Don't learn focused; A there leaves learning and the typed-text field off, and the answer is saved",
     { card, effBefore, s1: { consent: s1.consent, learn: s1.learn, echo: s1.echo }, echo, known },
   );
   await page.close();
@@ -465,21 +475,37 @@ async function consent() {
   await settle(page);
   const s2 = await h.F(() => ({ ...window.__oskTrackpadFix.settings, open: !!document.querySelector(".osk-set") }));
   check(
-    s2.consent === true && s2.learn === true && s2.echo === true && !s2.open,
-    "Turn on with the D-pad and A turns learning and the typed-text field on and closes the card",
+    path[0] === "OSKSet_consent_off" &&
+      path.at(-1) === "OSKSet_consent_on" &&
+      s2.consent === true &&
+      s2.learn === true &&
+      s2.echo === false &&
+      !s2.open,
+    "Learn my words, reached with the D-pad and pressed with A, turns learning on (the typed-text field stays off) and closes the card",
     { path, s2: { consent: s2.consent, learn: s2.learn, echo: s2.echo, open: s2.open } },
   );
   await page.close();
 
   ({ page } = await fresh({
     consent: false,
-    userWords: { version: 1, words: {}, bigrams: {}, settings: { autocorrect: false, echo: false } },
+    userWords: {
+      version: 1,
+      words: {},
+      bigrams: {},
+      settings: { autocorrect: false, echo: true, learn: true, boardAlpha: 40, stripAlpha: 90 },
+    },
   }));
   h = helpers(page);
   await settle(page);
   const s3 = await h.F(() => ({ ...window.__oskTrackpadFix.settings, open: !!document.querySelector(".osk-set") }));
   check(
-    s3.consent === true && s3.autocorrect === false && s3.echo === false && s3.learn === true && !s3.open,
+    s3.consent === true &&
+      s3.autocorrect === false &&
+      s3.echo === true &&
+      s3.learn === true &&
+      s3.boardAlpha === 40 &&
+      s3.stripAlpha === 90 &&
+      !s3.open,
     "an existing user with saved settings gets no card and keeps the settings",
     { s3: { consent: s3.consent, autocorrect: s3.autocorrect, echo: s3.echo, learn: s3.learn, open: s3.open } },
   );

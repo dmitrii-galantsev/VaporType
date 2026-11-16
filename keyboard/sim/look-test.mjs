@@ -13,7 +13,7 @@ const { browser, page, errors } = await openSim({ backdrop: true });
 await page.evaluate(() => {
   window.__oskUserWords = null;
   window.localStorage.clear();
-  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, tipShown: true }));
+  window.localStorage.setItem("oskSwipeSettings", JSON.stringify({ consent: true, tipShown: true, echo: true }));
 });
 await page.evaluate(["swipe/words.js", "swipe/lm.js", "swipe/engine.js"].map(read).join("\n;\n"));
 results.push(`inject: ${await inject(page, read("patch.js"))}`);
