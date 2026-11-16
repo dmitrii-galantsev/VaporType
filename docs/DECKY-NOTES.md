@@ -84,7 +84,8 @@ running after disable or unload. Disable and unload stop the patch synchronously
 unless forced, compares `tag_name` with `package.json` as numbers (never a downgrade or the same version) and keeps the
 result in `plugin-settings.json` (`update`: `latest`, `htmlUrl`, the two asset URLs, `checkedAt`, `error`, and
 `needsDecky` or `failed` for a version). `autoUpdate` (default on) is set with `set_auto_update`; `get_update_status`
-returns all of it. Failed checks only change the status line.
+returns all of it. Failed checks only change the status line. Requests use certifi's CA bundle (Decky ships certifi):
+with Python's default context the Deck's plugin process fails with `CERTIFICATE_VERIFY_FAILED`.
 
 `install_update(version, auto)` downloads `VaporType.zip` and its `.sha256` (zip at most 32 MB), checks the hash and
 reads the zip in memory: exactly one top folder whose `plugin.json` names VaporType, no absolute, `..`, backslash or

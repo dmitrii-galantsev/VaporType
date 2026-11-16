@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import time
 import urllib.request
 import zipfile
@@ -90,9 +91,17 @@ def installed_version():
     return (read_json(os.path.join(plugin_dir(), "package.json")) or {}).get("version")
 
 
+def tls_context():
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def http_get(url, limit):
     req = urllib.request.Request(url, headers={"User-Agent": f"{NAME}-updater", "Accept": "application/vnd.github+json, */*"})
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT, context=tls_context()) as r:
         data = r.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"{url} is larger than {limit} bytes")
