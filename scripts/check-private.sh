@@ -12,7 +12,7 @@ scan() {
   shift
   grep -rnoIiE ".{0,40}($pattern).{0,40}" \
     --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.steamui --exclude-dir=out \
-    --exclude=check-private.sh --exclude=pnpm-lock.yaml "$@" . 2>/dev/null || true
+    --exclude=.git --exclude=check-private.sh --exclude=pnpm-lock.yaml "$@" . 2>/dev/null || true
 }
 
 hits=$(
