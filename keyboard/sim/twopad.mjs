@@ -136,6 +136,7 @@ function installDriver() {
     const out = { samples: [], downs: [], ups: [], frames: [], sends: [], acts: [] };
     const acts = [...(plan.acts ?? [])].sort((a, b) => a[0] - b[0]);
     let ai = 0;
+    let unfired = 0;
     const k0 = window.__keyLog.length;
     const events = sides
       .flatMap((s) =>
@@ -191,9 +192,16 @@ function installDriver() {
         const fire = () => {
           out.acts.push([performance.now() - t0, name, arg, window.__keyLog.length - k0]);
           act[name](arg);
+          since = performance.now();
         };
         if (after === undefined) fire();
-        else setTimeout(fire, after);
+        else {
+          unfired++;
+          setTimeout(() => {
+            unfired--;
+            fire();
+          }, after);
+        }
       }
       if (sends.length !== n || F.idle?.() === false) {
         n = sends.length;
@@ -203,6 +211,7 @@ function installDriver() {
         t >= plan.end &&
         ei >= events.length &&
         ai >= acts.length &&
+        unfired === 0 &&
         (performance.now() - since > (plan.quiet ?? 300) || t > plan.end + (plan.wait ?? 1500))
       )
         break;
