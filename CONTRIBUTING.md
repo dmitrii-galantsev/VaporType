@@ -20,10 +20,9 @@
 | `docs/` | how the keyboard works (`KEYBOARD.md`), Decky integration, bake-off results, research notes |
 | `licenses/` | MIT text, Decky template license and SCOWL notices used to generate `LICENSE` |
 
-The runtime files work without Decky too: anything that evaluates `swipe/words.js`, `swipe/lm.js`,
-`swipe/engine.js`, `modes.js` and then `patch.js` in Steam's `SharedJSContext` gets the keyboard
-(`node keyboard/runtime.mjs <dir>` assembles them with `inject.mjs`). `window.__oskTrackpadFix` is the API, described
-in [docs/KEYBOARD.md](docs/KEYBOARD.md).
+How the patch works, its API, the host protocol and running it without Decky: [docs/KEYBOARD.md](docs/KEYBOARD.md).
+How the plugin loads and stores files: [docs/DECKY-NOTES.md](docs/DECKY-NOTES.md). Every tuning decision and its
+measurements: [docs/BAKEOFFS.md](docs/BAKEOFFS.md).
 
 ## Setup
 
@@ -36,21 +35,19 @@ below; the scripts find it either way.
 pnpm i
 pnpm run lint            # ESLint, tsc --noEmit, ruff check
 pnpm run format          # Prettier and ruff format; format:check only checks
-pnpm test                # build, engine gates, backend test, provenance, packaging test, privacy scan
-pnpm run test:sim        # simulator suites, plugin test, backend test; records test-record.json (needs Steam's UI files)
+pnpm test                # build, notices check, provenance, backend test, engine gates, packaging test, privacy scan
+pnpm run test:sim        # simulator suites, plugin test, gates, backend test; records test-record.json (needs Steam's UI files)
 pnpm run package         # -> out/VaporType.zip, only from files test:sim recorded
 ```
 
-Formatting: Prettier with `printWidth` 140 (the code was written with long lines; 140 keeps the one-time reformat
-small and still fits a side-by-side diff), Ruff with the same line length. Markdown is not run through Prettier: the
-docs are wrapped by hand at about 120 columns and their wide tables would be padded out. `keyboard/data/words.js`,
-`lm.js`, the corpora and the inputs are data and are left as built.
+Formatting: Prettier and Ruff at line length 140. Markdown is not run through Prettier: the docs are wrapped by hand
+at about 120 columns. `keyboard/data/words.js`, `lm.js`, the corpora and the inputs are data and are left as built.
 
 ## Release
 
 `test:sim` runs `keyboard/sim/test-all.sh` (every simulator suite, `test/plugin-sim.mjs` and the engine gates, in
-parallel) and `test/backend-test.py`, then writes the hashes of every shipped file and its sources to `test-record.json`. Commit that
-file with the change. `package.sh` zips an explicit allowlist (`PACKAGE` in `scripts/provenance.mjs`) and refuses
+parallel) and `test/backend-test.py`, then writes the hashes of every shipped file and its sources to
+`test-record.json`. Commit that file with the change. `package.sh` zips an explicit allowlist (`PACKAGE` in `scripts/provenance.mjs`) and refuses
 unless every listed file, its sources and nothing else in `dist/` match `test-record.json`; the record ships in the zip.
 
 Pushing a tag `v<version>` (matching `package.json`) runs `.github/workflows/release.yml`: `pnpm test`, the

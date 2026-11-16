@@ -1,7 +1,7 @@
 # Typing modes for the Steam Deck keyboard: research, design, results
 
-Research note written while choosing the typing modes. Fast taps and Columns were removed in keyboard v30;
-the sections describing them record what was tried, not the current code.
+Research note written while choosing the typing modes. Fast taps and Columns were removed in keyboard v30; section 3
+records what was tried.
 
 ## 1. What the hardware gives us (read from Steam's `sp.js`, module 52077 and the input layer)
 
@@ -63,9 +63,9 @@ Take-aways:
 
 | Idea | Verdict |
 |---|---|
-| Per-thumb magnified half keyboard (remap pad -> letters get more pad area) | **built as "Big letter keys"**, and used by the other two modes |
-| Fuzzy statistical tap decoder (tap without aiming, decode on space) | **built as "Fast taps"** |
-| T9/1Line-like grouped keys (only the column counts) | **built as "Columns"** |
+| Per-thumb magnified half keyboard (remap pad -> letters get more pad area) | **built as "Big letter keys"** |
+| Fuzzy statistical tap decoder (tap without aiming, decode on space) | built as "Fast taps", removed in v30 |
+| T9/1Line-like grouped keys (only the column counts) | built as "Columns", removed in v30 |
 | Pad-relative cursor with acceleration | rejected: relative pointing needs a visual loop per key (BlindType's cursor baseline: 7.66 WPM) |
 | Daisywheel / radial on pads | rejected: 6-16 WPM in every study, new layout to learn |
 | Chords / two-stroke (SwipeBoard) | rejected for now: two actions per letter; worth it only on watch-sized surfaces |
@@ -73,99 +73,25 @@ Take-aways:
 
 ## 4. What was built (`keyboard/src/modes.js`)
 
-`globalThis.__oskModes = { version, order, modes: { standard, bigkeys, sloppy, columns }, sync, debug, geometry, decoder }`.
+**Big letter keys** (`bigkeys`, the default): a piecewise-linear pad map. The suggestion and number rows get the top
+20 % of the pad, the letter rows 70 %, the space row the bottom 10 %; left pad letters start at 7 % of its width, the
+right pad's letters fill 78 % (punctuation, Enter and Backspace squeezed against the outer edge, where the pad's rim
+stops the thumb). Keys on the pad grow from 4.2 x 5.3 mm to 4.5 x 7.6 mm (left) and 5.4 x 7.6 mm (right). Typing,
+swiping and suggestions are unchanged. Steam's pointer is hidden and redrawn at the mapped point. X = Backspace and
+Y = Space make the squeezed rows cheap to lose. **Standard** is Steam's own mapping.
 
-Hook API a mode may implement (all optional, called by patch.js with `(kb, ..., modeApi)`):
-
-- `mapPad(kb, side, x, y, api) -> [x, y]`: remap a pad sample before Steam sees it (wraps `OnTrackpadAnalogInternal`).
-- `onPad(kb, side, active, api)`: after each pad sample (overlay repaint).
-- `keyAt(kb, x, y, api) -> element`: letter for a pad press that landed on a non-letter key.
-- `onKey(kb, {key, ch, tap}, api) -> handled`: every typed key except toggles; `tap` = pad press point
-  `{x, y, side}`, a touch point, or null (gamepad A).
-- `pick(kb, i, api) -> handled`, `suggestions(kb, api) -> {items, current} | null`: own the suggestion row.
-- `flush(kb, api)`: commit pending input (swipe start, touch outside, mode change). `reset()`: keyboard closed.
-- `sync(kb | null, modeId, api)` (module level): mounts/unmounts the overlay canvas and pointer-hiding style.
-
-`modeApi` (built in patch.js): `engine, keys, rect, spans, canCompose, caseFlags, applyCase, releaseShift, prev,
-lastOut, sentenceEnd, notBlocked, setSuggestions, refresh, commitWord, sendText, backspace, req, classes, covered,
-note`. `commitWord` sends via the one-character queue, applies auto-space, learns through `commitBuffer`
-(rare decoded words are not learned unless picked, like swipes) and leaves Backspace-undo information.
-
-### Big letter keys (`bigkeys`)
-Piecewise-linear pad map: suggestion + number rows get the top 20 % of the pad, the letter rows 70 %, the space
-row the bottom 10 %; left pad letters start at 7 % of its width, the right pad's letters fill 78 % (punctuation,
-Enter and Backspace squeezed against the outer edge, where the pad's rim stops the thumb). Keys on the pad grow
-from 4.2 x 5.3 mm to 4.5 x 7.6 mm (left) and 5.4 x 7.6 mm (right). Typing, swiping, suggestions unchanged.
-Steam's pointer is hidden and redrawn at the mapped point; a dashed outline marks the letter block.
-X = Backspace and Y = Space make the squeezed rows cheap to lose.
-
-### Fast taps (`sloppy`)
-Big-key map plus a VelociTap/BlindType-style decoder. Letter taps are held back (composition); each tap is stored
-as its pad position in millimetres, the dictionary (`words.js` plus learned words) is scored per word with a 2-D
-Gaussian per tap (sigma 2.2 mm in pad space, through the inverse map), one extra or one missing tap allowed
-(cheaper for double letters), prior from the engine (`complete()` gives the engine's own context-aware prior:
-frequency, learned counts, bigrams, LM). The suggestion row shows `[what you literally hit, best word,
-next]`; Y/space commits the best word + space, a pick commits that word, X removes the last tap, `.`/`,`/Enter
-commit and pass through, a swipe commits first, double space gives `. `, Backspace right after a commit restores the
-literal taps. Tap points show as numbered dots; dots under the middle slot count the taps. Taps landing on Tab,
-Caps, Shift, `;`, `[`, or the inner 40 % of the number row count as the nearest letter. Touchscreen and A-button
-letters join the composition as exact letters.
-
-### Columns (`columns`)
-1Line on the pads: the left pad is the five QWERTY columns q-t, the right pad y-p, each a 6.2 mm stripe running
-from the suggestion row to the space row (letter rows 79 % of the pad height, 87 % with the number row, which counts
-as the top letter row here). Only the x position counts
-(decoder uses column centres, sigma 2.0 mm, no y term). Same composition UI as Fast taps; the literal slot only
-appears when most letters came from the touchscreen. Digits by touch or the symbols layout. Works with
-"Right pad = whole keyboard" (then the right pad spans all ten columns).
+Two composing modes were built and later removed (keyboard v30): **Fast taps**, a VelociTap/BlindType-style decoder
+that held taps back and scored every dictionary word with a 2-D Gaussian per tap in pad millimetres, and **Columns**,
+1Line on the pads, where only a tap's column counted. They were the most accurate on simulated taps but held letters
+back until the word was committed and could only type dictionary words.
 
 ## 5. Results
 
-Engine-level benchmark `keyboard/bench/bench-modes.mjs` (chat corpus, 913 in-dictionary words, two seeds, previous word as
-context; taps aimed at the key centre in pad millimetres with isotropic Gaussian noise; "off-letters" = a tap
-landed on a non-letter key, counted as a failed word). Laptop timings. Simulated, not recorded on a Deck.
-
-| tap noise sigma | standard taps | + autocorrect | big keys + autocorrect | Fast taps top-1 / in row | Columns top-1 / in row |
-|---|---|---|---|---|---|
-| 0.7 mm (careful) | 99.0 | 96.9 | 97.3 | 98.6 / 100 | 95.1 / 99.9 |
-| 1.5 mm (quick) | 42.4 | 58.4 | 78.6 | 96.4 / 99.2 | 92.9 / 99.3 |
-| 2.5 mm (sloppy) | 8.1 | 18.0 | 35.3 | 81.4 / 86.0 | 80.4 / 91.0 |
-| 3.5 mm (eyes-free) | 2.6 | 6.4 | 14.1 | 53.1 / 61.3 | 59.5 / 72.5 |
-
-Decode 1.1-1.3 ms mean, 2.1-3.2 ms p95. The decoder alone on Steam's standard map gives 91.7 % at 1.5 mm,
-so of the 1.5 mm gain (42 -> 96 %) most comes from the decoder and the rest from the bigger keys.
-lambda (prior weight) 0.8 was picked on seed 20261023 from {0.5, 0.8, 1.1, 1.4}.
-Full output: `bench-modes.txt`.
-
-Sim (`keyboard/sim/modes-test.mjs`, Steam's real keyboard, pads driven through `OnLeft/RightTrackpadAnalog` with raw pad
-positions so the remap is exercised): 24/24 pass. Existing suites with the integration applied: `test.mjs` 20/20,
-`swipe-test.mjs` 32/32, `settings-test.mjs` same 3 failures as without it (trail-off and two settings-restore
-cases, failing on the current patch.js before integration).
-
-Screenshots (`shots/`): `mode-bigkeys.png`, `mode-sloppy-composing.png`, `mode-columns-composing.png`,
-`mode-settings-panel.png`.
-
-## 6. Integration
-
-`patch-integration.diff` (against patch.js v12 as of 2026-10-23 02:1x, plus inject.mjs and deploy.sh). It is
-generated by `apply-integration.py <patch.js> <out> [<inject.mjs> <out> <deploy.sh> <out>]` from anchors, so
-it can be regenerated when patch.js moves on. Changes:
-
-- VERSION + 1; `DEFAULTS.mode = "standard"`; `CHOICES.mode` ("Typing mode": Standard / Big letter keys / Fast taps /
-  Columns), which the settings panel renders as a cycling button; the panel hint shows the active mode's
-  description.
-- `setSetting("mode")` flushes the old mode, turns the suggestion row on for decoding modes, resyncs; `onePad`
-  changes resync the map. `state.setMode(id)`, `state.modeApi`; `status()` adds `mode=`.
-- Hooks: wrap `OnTrackpadAnalogInternal` (map + repaint; off while the settings panel is open); `TypeKeyInternal`
-  calls `mode.onKey` after the settings-key check (pad tap point from `commitTaps`, touch point from touchstart);
-  `refreshSuggestions` and `pickSuggestion` defer to the mode; `commitSwipe` and `onOutsidePointer` flush;
-  pad presses on non-letters go through `mode.keyAt`; letter strokes are allowed in decoding modes even with
-  swiping off; `tick` calls `__oskModes.sync`, `stop()` unmounts.
-- inject.mjs loads `modes.js` (when its version differs) before patch.js; deploy.sh copies it.
-
-Proposed README lines (for whoever merges): "**Typing modes** (settings panel, hold the emoji key → Typing mode):
-Big letter keys, Fast taps, Columns; `modes.js`, injected before `patch.js`; `keyboard/sim/modes-test.mjs`,
-`keyboard/bench/bench-modes.mjs`."
+Measured with `keyboard/bench/bench-modes.mjs` on simulated taps: [BAKEOFFS.md](../BAKEOFFS.md#typing-modes). The
+decoder alone on Steam's standard map gave 91.7 % of words right at 1.5 mm noise against 42.4 % for plain taps, so
+most of the composing modes' gain came from the decoder and the rest from the bigger keys. Tap positions have since
+reached autocorrect in Standard and Big letter keys
+([BAKEOFFS.md](../BAKEOFFS.md#tap-positions-in-correction)).
 
 ## Sources
 

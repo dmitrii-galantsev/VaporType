@@ -3,56 +3,47 @@
 What `keyboard/src/` does inside Steam, the injector API and the simulator. User-facing docs are in the
 [README](../README.md); measurements and the decisions taken from them in [BAKEOFFS.md](BAKEOFFS.md).
 
-The keyboard calls itself **VaporType** to users (version line, first-use card); code and files keep the
-`osk` names. `patch.js` (v37) runs in Steam's `SharedJSContext` and changes Steam's own keyboard (gamepad UI module with
-`TypeKeyInternal`, live in `steamui/sp.js`; `steamui/virtualkeyboard.js` is a stale standalone copy):
+Users see the name **VaporType**; code and files keep the `osk` names. `patch.js` runs in Steam's `SharedJSContext`
+and changes Steam's own keyboard (the gamepad UI module with `TypeKeyInternal`, in `steamui/sp.js`;
+`steamui/virtualkeyboard.js` is a stale standalone copy). Its version is `VERSION` at the top of the file.
 
-- **Swipe typing.** Hold a trackpad click on a letter and drag across the word, like Gboard or Swype; release to
-  type it. Each pad covers 55 % of the keyboard (Steam maps the left pad onto the left 55 %, the right pad
-  onto the right 55 %), so a word that spans both halves is swiped with both thumbs: every press while a word
-  is in progress, or within 220 ms of its last release, continues the same word, and a press without movement
-  adds that letter. Example "hello": right pad on h, left pad clicks e, right pad drags l to o. Two quick words
-  on alternating pads stay two words: the decoder also scores the split at every release gap and at every press
-  that lands while the other pad is still held, and keeps the more likely reading, so two swipes pressed at the
-  same time type both words in press order. A swipe is typed as soon as the last pad is released. A press within
-  220 ms of that release still joins: the word is decoded again with the new stroke, and if the joined reading wins the
-  typed word is replaced with Backspaces; if the first word stays, nothing is retyped (that split gets a 4-point
-  bonus, `REWRITE_COST`, since the word is already on screen). The decodes after a release (whole gesture, then each split's
-  halves) run in slices of at most 8 ms (`SLICE_MS`), and any key, press, pick, bumper or close in between finishes them first; the live preview in the suggestion row pauses while both pads are
-  held. Tapped letters are typed on release even while the other pad is still held, in press order. The touchscreen swipes the same way. A blue (left pad) / orange
-  (right pad) trail shows the path.
-- **Steam's per-open input leak.** Every time Steam's keyboard opens it builds a new component, and its
-  constructor makes a new gamepad input source (`m_trackpadInput`, module 17900) that registers
-  `HandleControllerInputMessages` with `SteamClient.Input.RegisterForControllerInputMessages` and
-  `RegisterForControllerAnalogInputMessages`, `HandleSystemKeyEvents` with `SteamClient.System.UI.RegisterForSystemKeyEvents`,
-  and two controller-list notifications, and never unregisters any of them. Each open therefore adds one more handler
-  that runs on every pad sample until Steam restarts, which is why typing with both pads gets slower the longer Steam
-  runs (reported for Steam Deck and Steam Machine: "Virtual keyboard performance degrades dramatically at some point",
-  Steam Controller bug forum, 2026-10-22). The patch wraps those three `Register…` calls to keep each returned handle,
-  and after the keyboard's `componentWillUnmount` unregisters the handles of that keyboard's input source and turns
-  its `OnAnalogPad`, `OnButtonDown`, `OnButtonUp` and `OnSystemButtonPress` into no-ops (a keyboard mounted again
-  gets them back). Handlers registered before the patch loaded cannot be reached: a Steam restart clears them. The
-  two controller-list notifications go through Steam's service transport and are left alone; they run only when a
-  controller connects or disconnects.
+- **Swipe typing.** Hold a pad click on a letter, drag across the word and release. Each pad covers 55 % of the
+  keyboard (Steam maps the left pad onto the left 55 %, the right pad onto the right 55 %), so a word that spans
+  both halves is swiped with both thumbs: a press while a word is in progress, or within 220 ms (`JOIN_MS`) of its
+  last release, continues it, and a press without movement adds that letter. Example "hello": right pad on h, left
+  pad clicks e, right pad drags l to o. The decoder also scores a split into two words at every release gap and at
+  every press that lands while the other pad is held, so two quick words on alternating pads, or two swipes pressed
+  at once, stay two words in press order. A swipe is typed as soon as the last pad is released; if a press within
+  220 ms then joins and the joined reading wins, the typed word is replaced with Backspaces (keeping the word on
+  screen gets a 4-point bonus, `REWRITE_COST`). The decodes after a release run in slices of at most 8 ms
+  (`SLICE_MS`); any key, press, pick, bumper or close in between finishes them first. The live preview in the
+  suggestion row pauses while both pads are held. The touchscreen swipes the same way. The trail is blue for the
+  left pad and orange for the right.
+- **Steam's per-open input leak.** Each time Steam's keyboard opens it builds a new gamepad input source
+  (`m_trackpadInput`) whose constructor registers `HandleControllerInputMessages` with
+  `SteamClient.Input.RegisterForControllerInputMessages` and `RegisterForControllerAnalogInputMessages`,
+  `HandleSystemKeyEvents` with `SteamClient.System.UI.RegisterForSystemKeyEvents`, and two controller-list
+  notifications, and never unregisters them. Every pad sample then runs one more handler per open until Steam
+  restarts, so two-pad typing gets slower the longer Steam runs. The patch wraps the three `Register…` calls
+  (`INPUT_REGISTERS`) to keep the handles; after the keyboard's `componentWillUnmount` it unregisters that input
+  source's handles and turns its `OnAnalogPad`, `OnButtonDown`, `OnButtonUp` and `OnSystemButtonPress` into no-ops
+  (a keyboard mounted again gets them back). Handlers registered before the patch loaded stay until Steam restarts.
+  The controller-list notifications are left alone; they run only when a controller connects or disconnects.
 - **Zoomed windows.** Desktop Mode zooms the keyboard window's root 1.5x; `zoomOf()` measures whether rects
   include that zoom, so touches, the trail, the mode overlay, the tip and the panel line up with the screen.
-- **Pad reach** (setting "Pad reach", Input tab: Own half 55 default, Past middle 75, Whole 100, Right pad only).
-  `padSpan(side)` is the share of the keyboard's width a pad covers: reach / 100 for both pads, or with Right pad only
-  1 for the right pad and 0.55 for the left. The patch sets Steam's pointer containers to that width
-  (`TouchpadPointerContainer.LeftTrackpad` / `RightTrackpad`), so Steam's x mapping follows, and the typing modes' pad
-  maps (`modeApi.spans()`), the decoder's per-pad reach (`ctx.pads`), the movement gate that turns a press into a
-  swipe and the cursor-slide distances follow it. At 75 or 100 the pads overlap, so either thumb alone can swipe
-  "testing"; a word still continues across both pads when both are used. Right pad only works like a phone: one
-  thumb on the right pad reaches every key, and the left pad keeps its own half.
-- **Full-width pad up/down** (setting, Input tab, shown only while a pad covers the whole keyboard). Steam alone
-  would stretch the 32.5 mm pad over the keyboard's full height too, so a thumb movement would go about 3x farther
-  sideways than up or down. On a pad at 100 % `modes.js` remaps y (`isoY`): the pad's y gain is its x gain over the
-  letters divided by the setting (Balanced 2:1 default; Even 1:1 is the same movement both ways; Stretched 3:1 is
-  Steam's own), centred on the middle letter row and clamped at the keyboard's top and bottom, so the outer part of
-  the pad lands on the top or bottom row. The overlay draws the pointer at the remapped place and Steam's own pointer
-  is hidden. 2:1 rather than 1:1: at 1:1 a key row is 1.8 mm of pad and one-thumb swipes drop to 34 % top-1
-  ([BAKEOFFS.md](BAKEOFFS.md#one-thumb-vertical-mapping-v16)). Two pads stay more accurate than one (91.6 % against
-  57-69 % one-thumb, held-out seed), which is why Own half is the default.
+- **Pad reach** (Input tab: Own half 55, the default; Past middle 75; Whole 100; Right only). `padSpan(side)` is the
+  share of the keyboard's width a pad covers: reach / 100 for both pads, or with Right only 1 for the right pad and
+  0.55 for the left. The patch sets Steam's pointer containers (`TouchpadPointerContainer.LeftTrackpad` /
+  `RightTrackpad`) to that width, so Steam's x mapping follows, and so do the modes' pad maps, the decoder's per-pad
+  reach (`ctx.pads`), the swipe gate and the cursor-slide distances. At 75 or 100 either thumb alone can swipe any
+  word. Two pads stay more accurate than one ([BAKEOFFS.md](BAKEOFFS.md#one-thumb-on-the-right-pad)), which is why
+  Own half is the default.
+- **Full-width pad up/down** (Input tab, shown only while a pad covers the whole keyboard). Steam alone would stretch
+  the 32.5 mm pad over the keyboard's full height too, so a thumb movement would go about 3x farther sideways than up
+  or down. On a full-width pad `modes.js` remaps y (`isoY`): the y gain is the x gain over the letters divided by the
+  setting (Balanced 2:1, the default; Even 1:1; Stretched 3:1, Steam's own), centred on the middle letter row and
+  clamped at the keyboard's top and bottom. The overlay draws the pointer at the remapped place and Steam's pointer
+  is hidden. Why 2:1: [BAKEOFFS.md](BAKEOFFS.md#one-thumb-vertical-mapping-v16).
 - **Look and see-through** (Look tab). "Look" picks the colours (Modern rounded keys with gaps, the default; Steam's
   original; OLED black). Four sliders and the Glass choice (`SLIDERS` in `patch.js`; rows `s_` and `c_blur`, see
   Settings panel) set how much of the game shows through, each independently and in every look:
@@ -100,258 +91,198 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   the row; key positions, the keyboard height and Steam's pad mapping do not change. With the suggestion row off
   it moves into the space bar. Hidden while the settings panel is open and in IME layouts; setting "Show typed
   text" (on by default). It cannot tell a password field, so it shows passwords as typed.
-- **Cursor slide** (setting "Slide space bar to move cursor", on by default), as on Gboard: press and hold the
-  space bar (pad click or touch) and slide sideways; each 0.5 key width sends one ArrowLeft/ArrowRight (0.25 when
-  moving faster than 1.5 key widths per 100 ms; on a pad covering more than its half the distances are in pad millimetres, so wider on
-  screen: 1.36x at 75 %, 1.82x at 100 %). While sliding the space bar reads "◂  cursor" moving left and "cursor  ▸" moving right. Released without sliding past 0.55 key widths it is a normal space, typed on release (a press
-  on any other key while it is held types the space first, so rolled typing keeps its order). Arrows go out on
-  Steam's text path through the output queue (one per call, 45 ms between arrows); at most 3 wait in the queue, so
-  the cursor never trails the thumb by more than about 135 ms: further steps are dropped and a step back cancels a
-  waiting one. The slide finishes the current word, resets the word tracker and marks the typed-text field as
-  unknown. Off while Ctrl/Win/Alt/AltGr is active. The right pad cannot slide left of its own edge (in two-pad mode
-  that is near the middle of the space bar), so press farther right or use the left pad. Slide-to-delete from
-  Backspace is not implemented.
+- **Cursor slide** (setting "Slide space bar to move cursor", on by default). Press and hold the space bar (pad
+  click or touch) and slide sideways; each 0.5 key width sends one ArrowLeft/ArrowRight (0.25 when moving faster than
+  1.5 key widths per 100 ms; on a pad covering more than its half the distances are in pad millimetres). The space bar
+  reads "◂  cursor" or "cursor  ▸" while sliding. Released without sliding past 0.55 key widths it is a normal space,
+  typed on release (a press on another key while it is held types the space first). Arrows go out through the output
+  queue 45 ms apart, and at most 3 wait, so the cursor trails the thumb by at most about 135 ms: further steps are
+  dropped and a step back cancels a waiting one. The slide finishes the current word, resets the word tracker and
+  marks the typed-text field unknown. Off while Ctrl/Win/Alt/AltGr is active. The right pad cannot slide left of its
+  own edge, so press farther right or use the left pad.
 - **Auto space** (setting "Remove auto space before punctuation", on by default). The tracker flag `T.auto` is set
-  when VaporType itself types a trailing space the user did not press: picking a completion, a prediction or "+ add"
-  in the suggestion row. The space the user presses (including the one that commits an autocorrection) and the leading
-  space before a
-  swiped word are not pending. The flag survives only while the next key is directly after the space: any other key
-  (letter, space, Backspace, arrows, chords), a cursor slide, focus loss, closing the keyboard and the 30 s
-  stale reset clear it; Shift, Caps Lock and the layout keys do not. Typing one of `. , ! ? : ; ) ] }` (with Shift
-  where the key needs it: `!`, `?`, `:`, `)`, `}`) or pressing Enter then sends one Backspace through the same output
-  queue (so the usual gaps apply: 100 ms between a Backspace and a different key) before the key. Quotes and `(` are
-  left alone because they may open. After `. , ! ? : ;` the tracker is "punct", so a swiped word gets its normal
-  space prefix ("hello. next"); after a pick the tracker is "space", so a swiped word is never given a second space.
-  Off: the space stays ("hello ."). A tapped letter right after a swiped word (Automatic word spacing on)
-  types the space first and starts a new word for the tracker and learner ("tracking a", not "trackinga"); a tapped
-  punctuation mark attaches without one. Tested by `node keyboard/sim/autospace-test.mjs`.
+  when VaporType types a trailing space the user did not press: picking a completion, a prediction or "+ add". Any
+  other key, a cursor slide, focus loss, closing the keyboard and the 30 s stale reset clear it; Shift, Caps Lock
+  and the layout keys do not. Typing one of `. , ! ? : ; ) ] }` or Enter while it is set sends one Backspace through
+  the output queue before the key. Quotes and `(` are left alone because they may open. A swiped word after `. , !
+  ? : ;` gets its normal space ("hello. next"); after a pick it gets none, so there is never a second space. With
+  Automatic word spacing on, a letter tapped right after a swiped word types a space first and starts a new word; a
+  tapped punctuation mark attaches without one.
 - **Enter** (setting "Enter closes keyboard", off by default). Steam closes the keyboard after Enter when it was
-  opened with the Steam+X chord or by a game asking for "dismiss on Enter" (`VirtualKeyboardManager.SetDismissOnEnterKey`,
-  read once in `HandleVirtualKeyDown("Enter")`, unless Shift is held). With the setting off the patch clears
-  `m_bDismissOnEnter` before Steam handles Enter, so chat can go on line after line; B, Close or Steam+X still close.
-  It remembers that it cleared Steam's flag and sets it again at the next Enter once the setting is on, when the
-  keyboard closes and on `stop()` (`dismissOnEnter`, `restoreDismiss`). A key that will close the keyboard (an Enter
-  that will close it, Close, Done) and is pressed with a pad (or a trigger acting as one) is held until that click comes
-  up and the thumb leaves the pad, or 250 ms after the click comes up while the thumb stays (`closesKeyboard`,
-  `releaseCloseHold`). Any pad or trigger click pressed while it is held joins the hold and does nothing else: the key
-  waits for every one of those clicks to come up, matched by button, and for every pad they used to be untouched or for
-  the same 250 ms. Steam hands the pads back to the game's controller config as the keyboard hides; sent on press, the
-  click still held went to the game as whatever that config binds to it (a mouse click on a pad set to mouse).
+  opened with Steam+X or a game asked for "dismiss on Enter" (`VirtualKeyboardManager.SetDismissOnEnterKey`, read in
+  `HandleVirtualKeyDown("Enter")` unless Shift is held). With the setting off the patch clears `m_bDismissOnEnter`
+  before Steam handles Enter, so chat can go on line after line; B, Close or Steam+X still close. It sets the flag
+  again when the setting is turned on, the keyboard closes or `stop()` runs (`dismissOnEnter`, `restoreDismiss`). A
+  key that will close the keyboard (such an Enter, Close, Done) pressed with a pad or a trigger acting as one is held
+  until every pad or trigger click pressed meanwhile comes up and its pad is untouched, or 250 ms after the click
+  comes up while the thumb stays (`closesKeyboard`, `releaseCloseHold`). Steam hands the pads back to the game as the
+  keyboard hides, and a click still held would reach the game (a mouse click on a pad set to mouse).
 - **Taps vs swipes.** A press on a letter is a tap, typed on release in press order (rolled two-thumb typing stays
-  in order), until the stroke is a deliberate drag. Released taps go out as soon as every earlier press is released,
-  without waiting for a later press still held on the other pad. Taps that are followed within 220 ms by a swipe are
-  folded into that word ("r" tapped, "ight" swiped = "right"). Presses on anything that is not a letter (space,
-  Backspace, Shift, digits, suggestions) act on press, except an Enter that closes the keyboard (above). Swiping is off while Ctrl / Win / Alt / AltGr is active.
-  A swipe is typed as soon as the last pad is released; any other key pressed before that output (Y, X, RT, a
-  touched key that is not a letter, LB / RB) types the pending word first: `settleSwipe` first finishes a decode
-  still running in slices (`settleFinish`), then any released strokes, before the key, Ctrl / Alt or chord goes
-  out. So Enter never sends the line without its last word, Backspace after a swipe takes the swiped word back,
-  and an LB / RB press right after a two-pad swipe never sends a lone Ctrl / Alt tap ahead of the words.
-- **Closing right after a swipe.** Every swipe released before the keyboard closes is typed whole: the close
-  (`settleOnClose`) finishes a sliced decode synchronously, decodes released strokes still waiting for their
-  timer, then cancels the slice timer so no decode resumes. The queue keeps every item emitted while committing a
-  swipe (marked in the queue) and drops everything else (`keepWords`), so the app gets the whole word or words,
-  never a first letter alone, and nothing queued by another action. A swipe still held when the keyboard closes types nothing.
-- **Swipe threshold** (setting `deadzone`, "Swipe threshold", Input tab: Small 80, Normal 100 default, Large 130;
-  `padMoved`).
-  The pad gate runs on time stamps, in key widths (median letter width, scaled by pad reach like the cursor slide).
-  A pad press starts a swipe when it moves more than 1.1 keys within the last 120 ms, or more than 1.5 keys from
-  where the thumb was 70 ms after the press (the press itself jolts the thumb, so the first 70 ms only count when
-  they already travel 1.1 keys). Resting, rolling and creeping thumbs never meet either test, and neither do the
-  0.8-1.1 key flicks that tapping fast produces ("m" + "aybe"). A one-key hop ("as", 0.8 key) is therefore a tap; adjacent-key words ("we", "hi") are
-  swiped through the second key and past it. Samples are kept from the first point, so the decoder sees the whole
-  stroke. The setting multiplies the 1.1- and 1.5-key distances, whatever the speed. The touchscreen keeps its 0.55-key gate. Numbers and the
-  corpora: [BAKEOFFS.md](BAKEOFFS.md#swipe-deadzone).
-- **Supported layouts.** One predicate (`layoutSupported`: Steam layouts `qwerty` and `qwerty_int`, the ones the
-  English dictionary fits) gates swipe, the suggestion row, autocorrect, learning, the typed-text field, the typing
-  modes' pad remap and logging. Any other layout (AZERTY, QWERTZ, Dvorak, Cyrillic, IME ...) types exactly as stock
-  Steam and has no suggestion row; the Esc row and the Ctrl/Win/Alt keys stay.
-- **Spacing and case.** A swiped word gets a space in front when it follows a word or `.,!?;:` (Gboard's
-  automatic space); punctuation tapped after it attaches. Shift (key or held left trigger, any time during the swipe)
-  capitalises it, Caps Lock upper-cases it.
-- **Pad edges.** Steam maps each pad onto the whole keyboard element, so the top of a pad lands in the suggestion
-  row (in Standard the top 18 % of the pad, on a full-width pad at 1:1 the top 37 %) and the very edges on the
-  keyboard's border, where Steam's hover finds no key. Every pad sample outside the keys' interior (within half a key
-  height of the outer keys' edges, or above them) snaps onto the nearest key: a chip counts only while it shows a
-  word, so the typed-text field, empty chips and the gaps press the number-row key below, and the hover highlight
-  always shows the key a click presses. Gaps between keys inside the keyboard behave as in Steam. Not done for
-  layouts that behave like stock Steam or while the settings panel is open.
-- **Geometry while the keyboard slides in.** The key bounds the pad clamp and snap use (`keyBounds`), the letter
-  rectangles (`letterKeys`), the zoom (`zoomOf`) and the modes' pad geometry (`modes.js` `geometryFor`) are cached
-  for 500 ms (zoom 1 s), but every cache entry also stores the keyboard element's rect (left, top, width, height) and is
-  dropped as soon as the live rect differs; the caches are dropped as well when the keyboard shows or hides. Steam
-  slides the keyboard in by animating the height of its element for about 300 ms and computes the pad x/y from the live
-  rect on every sample, while the keys inside keep their final size; with the suggestion row added the keys are 47 px
-  taller than the height Steam animates to, so for as long as the element's height differs from the keys' extent by more
-  than 12 px (`SLIDE_TOL`) the pad y is re-expressed against the keys' extent (`keyExtent`, `slideY`; the modes build
-  their maps on it, `L.steam` keeps Steam's own rect for the inverse). Without this, presses land a row low for up to
-  0.6 s after opening; with it no press is wrong after the keyboard stops.
-- **Suggestion row** above the number row, three slots, reachable by either pad (where a chip with a word is under the
-  pointer), touch or gamepad:
-  after a swipe the middle (blue) slot is the typed word and the sides are the next candidates; picking one
-  replaces it. While tapping a word the middle and right slots come from `engine.suggest`, best first
-  (completions and corrections, "lpl" -> "lol"). The left slot shows a third candidate while the letters are a word
-  in progress, that is while at least two of the first three candidates extend them ("wh": who / what / when);
-  otherwise it keeps the typed letters (“lpl”, or "+ add lpl" for a new word). When autocorrect is on and will change
-  the word on space, that correction is the middle slot, filled blue, and the left slot is the typed letters
-  (`correct()` gets `final: true` on space and punctuation only). Picking types it and a space. Right after an
-  autocorrect the left chip is "↶ dont": picking it puts the typed word back with its space (Backspace still does
-  too). Holding a chip blocks the word and the chip reads "blocked: word · tap to undo" for 3 s. After a space the
-  three slots offer next words; after Enter, and when the keyboard opens, the words you start lines with (nothing
-  until some are learned). One word model ranks all of it (`rowP` in `engine.js`): the probability of a word after
-  the two previous words. Its base is the dictionary frequency mixed half and half with the word's share of the pair
-  table, then the pair table, then the word triples. Your own typing sits on top as counts: every learned use of a
-  word weighs against 1,000 words of that base (`rowAlpha`), and every learned pair against 5 plus the number of
-  different words you typed after the first one (`rowBeta`, `rowBetaTypes`), so a pair typed once after a rare word
-  counts for much and after "I" for little. A completion is ranked by that probability alone; a correction also pays
-  its edit cost and a typo cost (`rowTypoCost` 2); a split into two words that are not a dictionary phrase pays a
-  missing-space cost (`rowSplitCost` 3); one-letter words are not offered as corrections. Measurements:
-  [BAKEOFFS.md](BAKEOFFS.md#one-word-model-for-the-suggestion-row-engine-v10-pairs-v6-keyboard-v37). Backspace right after a swipe deletes the whole
-  word and its space. With "LB / RB" set to Pick words the bumpers pick chips without moving a thumb off the letters
-  (below).
-- **Learning.** Words you finish with space, punctuation or the next swipe are counted: known words get more
-  likely. A word ended by `.`, `!` or `?` is learned like one ended by a comma, and the next word then has no
-  previous word. A word ended by Enter is learned like one ended by a space when the line already had a word, and
-  Enter clears the previous word. The only word of a line (nothing typed since the last Enter, closing or reset) is
-  never learned when Enter ends it (no word, phrase or pair counts, no new-word count), so a password typed alone and
-  submitted leaves nothing behind. A word left in the buffer when the keyboard closes, hides or stops is never
-  learned. Backspace on an empty buffer takes one off the line's word count, and a pause of 30 s or an outside tap resets it with the rest of the
-  tracker, so a word retyped over deleted ones or typed after a pause is not counted as following earlier ones. A word not in the dictionary is learned the second time it is typed by
-  tapping and ended with a space, punctuation or, after another word on the line, Enter within one Steam session. Only letters with an optional apostrophe, 2-24 long,
-  are learned; pairs of consecutive known words are counted for next-word suggestions. Every field is
-  learned from, including password fields Steam cannot tell apart: a passphrase of ordinary words separated
-  by spaces raises those words and their pairs. The first word of a line (after Enter, or after the keyboard opened)
-  is also counted as a line start, stored as the pair `^ word`; the only word of a line ended by Enter is not. Deleting a swiped word with Backspace counts against it.
-  `window.__oskTrackpadFix.forget("word")` and `forgetAll()` remove learned data. Learned data lives in
-  `user-words.json` (previous version `.bak`; counts only, no timestamps): under `~/homebrew/settings/vaportype/`
-  with the plugin, beside `inject.mjs` with the standalone injector, written within 5 s of a change, and in Steam's `localStorage`
-  (`oskSwipeUserWords`) as a fallback. The tracked word resets when the screen is touched outside the
-  keyboard, after 30 s without typing, and on arrows, Tab, Esc, chords and paste, so Backspace-undo and
-  suggestion picks never delete text somewhere the caret has moved to.
+  in order), until the stroke is a deliberate drag. Released taps go out as soon as every earlier press is released.
+  Taps followed within 220 ms by a swipe are folded into that word ("r" tapped, "ight" swiped = "right"). Presses on
+  anything that is not a letter act on press, except a key that closes the keyboard (above). Swiping is off while
+  Ctrl / Win / Alt / AltGr is active. Any other key pressed before a released swipe is typed (Y, X, RT, a touched key
+  that is not a letter, LB / RB) types the word first (`settleSwipe`, which also finishes a sliced decode with
+  `settleFinish`), so Enter never sends the line without its last word.
+- **Closing right after a swipe.** Every swipe released before the keyboard closes is typed whole: `settleOnClose`
+  finishes a sliced decode synchronously, decodes released strokes still waiting, then cancels the slice timer. The
+  output queue keeps the items of those swipes and drops everything else (`keepWords`). A swipe still held when the
+  keyboard closes types nothing.
+- **Swipe threshold** (setting `deadzone`, Input tab: Small 80, Normal 100, the default, Large 130; `padMoved`). In
+  key widths (median letter width, scaled by pad reach like the cursor slide), a pad press starts a swipe when it
+  moves more than 1.1 keys within the last 120 ms, or more than 1.5 keys from where the thumb was 70 ms after the
+  press (the press itself jolts the thumb). The setting multiplies both distances. Resting, rolling and creeping
+  thumbs and the 0.8-1.1 key flicks of fast tapping stay taps; adjacent-key words ("we", "hi") are swiped through the
+  second key and past it. The decoder still gets the stroke from its first point. The touchscreen uses a 0.55-key
+  gate. Measurements: [BAKEOFFS.md](BAKEOFFS.md#swipe-deadzone).
+- **Supported layouts.** `layoutSupported` (Steam layouts `qwerty` and `qwerty_int`, which the English dictionary
+  fits) gates swipe, the suggestion row, autocorrect, learning, the typed-text field, the typing modes' pad remap and
+  logging. Other layouts type exactly as stock Steam; the Esc key and Ctrl/Win/Alt stay.
+- **Spacing and case.** A swiped word gets a space in front when it follows a word or `.,!?;:`; punctuation tapped
+  after it attaches. Shift (key or held left trigger, any time during the swipe) capitalises it, Caps Lock upper-cases
+  it.
+- **Pad edges.** Steam maps each pad onto the whole keyboard element, so the top of a pad lands in the suggestion row
+  and the very edges on the keyboard's border, where Steam's hover finds no key. Every pad sample outside the keys'
+  interior (within half a key height of the outer keys' edges, or beyond them) snaps onto the nearest key; a chip
+  counts only while it shows a word, so the typed-text field, empty chips and gaps press the number-row key below.
+  The hover always shows the key a click presses. Pad x/y are also clamped onto the key area up to 80 px outside it
+  (`EDGE_PX`), so an overshoot below the bottom row hits the row above (ValveSoftware/steam-for-linux#10683). Neither
+  applies to unsupported layouts or while the settings panel is open.
+- **Geometry while the keyboard slides in.** `keyBounds`, `letterKeys`, `zoomOf` and `modes.js` `geometryFor` are
+  cached for 500 ms (zoom 1 s), but each entry stores the keyboard element's rect and is dropped when the live rect
+  differs, and all are dropped when the keyboard shows or hides. Steam slides the keyboard in by animating its
+  element's height for about 300 ms and maps pad x/y from the live rect, while the keys keep their final size. While
+  the element's height differs from the keys' extent by more than 12 px (`SLIDE_TOL`) the pad y is re-expressed
+  against the keys' extent (`keyExtent`, `slideY`). Without this, presses land a row low for up to 0.6 s after
+  opening.
+- **Suggestion row** above the number row, three chips, reachable by either pad, touch or gamepad. After a swipe the
+  middle (blue) chip is the typed word and the sides are the next candidates; picking one replaces it. While tapping
+  a word the middle and right chips are `engine.suggest`'s best two (completions and corrections, "lpl" -> "lol").
+  The left chip shows a third candidate while the letters are a word in progress (at least two of the first three
+  candidates extend them, "wh": who / what / when); otherwise it shows the typed letters, or "+ add lpl" for a new
+  word. When autocorrect is on and will change the word on space, that correction is the middle chip, filled blue,
+  and the left chip is the typed letters (`correct()` gets `final: true` only on space and punctuation). Picking types
+  the word and a space. Right after an autocorrect the left chip is "↶ dont", which puts the typed word back (so does
+  Backspace). Holding a chip blocks the word ("blocked: word · tap to undo", 3 s). After a space the chips offer next
+  words; after Enter and when the keyboard opens, the words you start lines with (none until some are learned).
+  Backspace right after a swipe deletes the whole word and its space.
+
+  One word model ranks the row (`rowP` in `engine.js`): the probability of a word after the two previous words. Its
+  base is the dictionary frequency mixed half and half with the word's share of the pair table (`rowChat`), then the
+  pair table, then the word triples. The user's own typing sits on top as counts: a learned use weighs against 1,000
+  words of that base (`rowAlpha`), a learned pair against 5 plus the number of different words typed after the first
+  one (`rowBeta`, `rowBetaTypes`). A completion is ranked by that probability alone; a correction also pays its edit
+  cost and a typo cost (`rowTypoCost` 2); a split into two words that are not a dictionary phrase pays
+  `rowSplitCost` 3; one-letter words are not offered as corrections. Measurements:
+  [BAKEOFFS.md](BAKEOFFS.md#one-word-model-for-the-suggestion-row-engine-v10-pairs-v6-keyboard-v37).
+- **Learning.** A word finished with space, punctuation or the next swipe is counted, with its pair (previous word,
+  word). `.`, `!` and `?` end the sentence: the next word has no previous word. A word ended by Enter is learned when
+  the line already had a word; the only word of a line (nothing typed since the last Enter, open or reset) is never
+  learned, so a password typed alone and submitted leaves nothing behind. A word left in the buffer when the keyboard
+  closes, hides or stops is never learned. A new word is learned on its second tapped use in one Steam session. A
+  swiped word under zipf 3.5 that the user has not typed before is not learned unless it was picked from the row.
+  Only letters with an optional apostrophe, 2-24 long, are learned. The first word of a line is also stored as the
+  pair `^ word` (line starts). Deleting a swiped word with Backspace counts against it. Steam cannot tell password
+  fields apart, so a passphrase of ordinary words raises those words and pairs. The tracked word and previous word
+  reset on an outside touch, after 30 s without typing, and on arrows, Tab, Esc, chords and paste, so
+  Backspace-undo and picks never delete text where the caret has moved; Backspace on an empty buffer also takes one
+  off the line's word count. `forget("word")` and `forgetAll()` remove learned data. Learned data lives in
+  `user-words.json` (counts only, no timestamps; the previous version as `.bak`): under
+  `~/homebrew/settings/vaportype/` with the plugin, beside `inject.mjs` with the standalone injector; Steam's
+  `localStorage` (`oskSwipeUserWords`) is the fallback.
 - **Typing modes** (`modes.js`, setting "Typing mode": Standard or Big letter keys). Big letter keys (the default):
   the three letter rows fill 70 % of each pad's height and the other rows move to the pad edges, so a letter is
-  4.5-5.4 x 7.6 mm on the pad instead of 4.2 x 5.3; taps and swipes work as in Standard and the overlay draws the
-  pointer at the remapped position. Standard is Steam's mapping. A saved mode that no longer exists loads as Big
-  letter keys. Prior art with sources: [research/typing-modes.md](research/typing-modes.md); measurements:
-  [BAKEOFFS.md](BAKEOFFS.md).
-- **Autocorrect.** On space or punctuation a tapped word goes through `engine.correct`: keyboard-distance
-  typos, missing apostrophes ("dont" -> "don't", "im" -> "I'm"), run-together words and phrases ("imdone" ->
-  "I'm done"). It is applied only when `confident`; learned words, words with digits, ALL-CAPS and common real
-  words without strong context are never changed. Backspace right after it restores what was typed.
+  4.5-5.4 x 7.6 mm on the pad instead of 4.2 x 5.3; the overlay draws the pointer at the remapped position. Standard
+  is Steam's mapping. A saved mode that no longer exists loads as Big letter keys. Prior art:
+  [research/typing-modes.md](research/typing-modes.md); measurements: [BAKEOFFS.md](BAKEOFFS.md#typing-modes).
+- **Autocorrect.** On space or punctuation a tapped word goes through `engine.correct`: keyboard-distance typos, tap
+  positions (`ctx.taps`), missing apostrophes ("dont" -> "don't", "im" -> "I'm"), run-together words and phrases
+  ("imdone" -> "I'm done"). It is applied only when `confident`; learned words, words with digits, ALL-CAPS and common
+  real words without strong context are never changed. Backspace right after it restores what was typed.
 - **Dictionary and word pairs.** `keyboard/data/words.js` and `keyboard/data/lm.js`, built by
   `keyboard/build/build_words.py` from wordfreq, the SCOWL word lists and the generated chat and web pair counts in
   `keyboard/data/inputs/` (`pip install wordfreq==3.1.1`; `OSK_*` variables select variants; the default build
   reproduces words.js byte for byte and lm.js up to the triples). `python3 keyboard/build/build_trigrams.py --merge`
-  then appends 25,000 word triples (lines `a b c z10`, read by engine v10 on and skipped by older engines) counted in
-  the same generated lines and sets the pair-table version to 6; it needs no wordfreq and gave the same bytes on two
-  hosts. Sources and licenses: [DATA-LICENSES.md](../keyboard/data/DATA-LICENSES.md).
-  `keyboard/src/engine.js` is
-  the decoder and learner (`createEngine(words, { lm })` with `decode`, `complete`, `suggest`, `predict`, `correct`,
-  `learn`, `unlearn`, `forget`, `info`, `warm`, `warmStep`, `setUser`, `exportUser`; `warmStep()` builds one index, 200 000
-  characters of the pair table or one letter's completions per call, and the patch creates the engine and runs these
-  steps in idle callbacks after it loads, so the first keyboard open does none of it). `suggest` and `predict` take
-  `ctx.prev` with up to two previous words and `ctx.start` at the start of a line. `decode` and `correct` keep their own
-  prior (dictionary frequency, the pair table with one previous word, a flat bonus per learned use), which the swipe
-  and autocorrect gates are tuned on. `decode` splits the trace into one
-  run per pad press (points tagged `L1`, `R2`, ... by `patch.js`), ignores a pad held still while the other
-  works, splits the word's letters across the runs in order within each pad's reach (`ctx.pads`), and scores
-  location (DTW), start/end keys, shape, length and word frequency, with a bonus for pauses or loops on
-  double letters (bimanual approach of Bi et al., UIST 2012; constants tuned with `bench.mjs`).
-- **Trackpad clamp.** Pad x/y are clamped onto the key area up to 80 px outside it, so an overshoot below the
-  bottom row hits the key above it (ValveSoftware/steam-for-linux#10683).
-- **Esc, Ctrl, Win, Alt keys.** Esc goes left of the number row; Ctrl, Win and Alt go to the bottom-left corner. They
-  use Steam's own `Control` / `Alt` toggle states, which the keyboard already had but ignored on output, and a `Meta`
-  state the patch adds to the keyboard's `s_keyToggleData` (restored on stop): tap is one-shot (blue label), double
-  tap locks (blue key), a third tap turns it off, like Shift. Holding the key on the touchscreen also works. Win is
-  for Windows hosts over Moonlight (Win+Shift+S is a partial screenshot); Moonlight passes it on when it captures
-  system keyboard shortcuts. Ctrl, Win and Alt are as wide as a letter key (6.45 % of the row instead of Steam's
-  8.2 % for the keys around them), which leaves the space bar 240 of the 854 px keyboard instead of 196 px.
-- **LB / RB** (setting "LB / RB", Input tab: Ctrl / Alt default, Pick words, Off). The bumpers only drive IME
-  candidate paging in Steam's keyboard, unused in Latin layouts; in the emoji layouts they still switch categories.
-  - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (left trigger already holds Shift).
-    Closing the keyboard forgets a bumper still held (its release may never reach the keyboard) and strips the held
-    bit from Ctrl / Alt, so a reopened keyboard types plain keys; it also drops a pad hold on a suggestion chip or the
-    emoji key, so the next press on that pad types.
-  - Pick words: a bumper press picks a suggestion chip exactly as a click on it would (`pickByBumper`), so both
-    thumbs stay on the letters and an index finger picks. RB takes the best chip and LB the other one
-    (`PICK_SLOTS`): while tapping a word RB is the middle chip and LB the right one; after a space RB is the middle
-    prediction and LB the left one; after a swipe RB is the left alternative and LB the right one, since the middle
-    chip is the swiped word; right after an autocorrect LB is the "↶" undo chip. The chips they would pick carry RB
-    and LB badges (`osk-sug-rb`, `osk-sug-lb`), never on the literal, "+ add" or a notice; with no badge the press
-    does nothing. A swipe still being decoded is typed first (`settleSwipe`). The press and its release are kept
-    from Steam, held repeats are ignored, and nothing is picked from a tracker gone stale (30 s), which is reset
-    instead. Needs the suggestion row. Motivation and the measurement: [BAKEOFFS.md](BAKEOFFS.md#typing-log-review-2026-10-30).
+  then appends 25,000 word triples (lines `a b c z10`, skipped by engines before v10) and sets the pair-table version
+  to 6; it needs no wordfreq. Sources and licenses: [DATA-LICENSES.md](../keyboard/data/DATA-LICENSES.md).
+- **Engine.** `keyboard/src/engine.js`: `createEngine(words, { lm })` with `decode`, `complete`, `suggest`,
+  `predict`, `correct`, `learn`, `unlearn`, `forget`, `info`, `warm`, `warmStep`, `setUser`, `exportUser`.
+  `warmStep()` builds one index, 200,000 characters of the pair table or one letter's completions per call; the patch
+  creates the engine and runs these steps in idle callbacks after it loads, so the first keyboard open does none of
+  it. `suggest` and `predict` take `ctx.prev` (up to two previous words) and `ctx.start` at the start of a line.
+  `decode` and `correct` keep their own prior (dictionary frequency, the pair table with one previous word, a bonus
+  per learned use), which the swipe and autocorrect gates are tuned on. `decode` splits the trace into one run per pad
+  press (points tagged `L1`, `R2`, ... by `patch.js`), ignores a pad held still while the other works, splits the
+  word's letters across the runs in order within each pad's reach (`ctx.pads`), and scores location (DTW), start/end
+  keys, shape, length and word frequency, with a bonus for pauses or loops on double letters (bimanual approach of Bi
+  et al., UIST 2012).
+- **Esc, Ctrl, Win, Alt keys.** Esc goes left of the number row; Ctrl, Win and Alt go to the bottom-left corner,
+  each as wide as a letter key (6.45 % of the row; why: [BAKEOFFS.md](BAKEOFFS.md#space-bar-width-with-the-win-key-keyboard-v34)).
+  They use Steam's own `Control` / `Alt` toggle states, which the keyboard had but ignored on output, and a `Meta`
+  state the patch adds to `s_keyToggleData` (restored on stop): a tap is one-shot (blue label), a double tap locks
+  (blue key), a third tap turns it off, like Shift. Holding the key on the touchscreen also works. Win is for Windows
+  hosts over Moonlight, which passes it on when it captures system keyboard shortcuts.
+- **LB / RB** (Input tab: Ctrl / Alt, the default; Pick words; Off). In Steam's keyboard the bumpers only page IME
+  candidates, unused in Latin layouts; in the emoji layouts they still switch categories.
+  - Ctrl / Alt: LB holds Ctrl and RB holds Alt while the keyboard shows letters (the left trigger already holds
+    Shift). Closing the keyboard forgets a bumper still held (its release may never arrive) and drops the held bit
+    from Ctrl / Alt, so a reopened keyboard types plain keys; it also drops a pad hold on a chip or the emoji key.
+  - Pick words: a bumper press picks a chip as a click on it would (`pickByBumper`). RB takes the best chip and LB
+    the other one (`PICK_SLOTS`): while tapping a word RB is the middle chip and LB the right one; after a space RB is
+    the middle prediction and LB the left one; after a swipe RB is the left alternative and LB the right one; right
+    after an autocorrect LB is the "↶" undo chip. Those chips carry RB and LB badges, never the literal, "+ add" or a
+    notice; with no badge the press does nothing. A swipe still being decoded is typed first. The press and its
+    release are kept from Steam, held repeats are ignored, and a tracker gone stale (30 s) is reset instead of picked
+    from. Needs the suggestion row. Why: [BAKEOFFS.md](BAKEOFFS.md#typing-log-review-2026-10-30).
   - Off: the bumpers do nothing on the letters.
 - **Output.** While Ctrl, Win or Alt is active, or for Esc, the key goes out as real key events through
-  `SteamClient.Input.ControllerKeyboardSetKeyState(EHIDKeyboardKey, down)`, the same call Steam's Paste key
-  uses (LControl 103, V 25). Keys 0-99 are USB HID usages; modifiers are LAlt 100, LShift 101, LWin 102,
-  LControl 103, RShift 105. The real Ctrl/Win/Alt is held down while the toggle is active and released when it
-  clears or the keyboard closes; it never goes down while plain text is still queued: the press waits in the
-  queue behind that text (40 ms chord gap), and a plain character or Backspace that finds Ctrl/Win/Alt down releases
-  it first and queues the press again after itself. Shift is added for Shift (key or left trigger) and for shifted symbols; Tab
-  uses Right Shift because Steam takes LShift+Tab. Plain typing and swiped words stay on Steam's text path
+  `SteamClient.Input.ControllerKeyboardSetKeyState(EHIDKeyboardKey, down)`, the call Steam's Paste key uses. Keys 0-99
+  are USB HID usages; modifiers are LAlt 100, LShift 101, LWin 102, LControl 103, RShift 105. The real Ctrl/Win/Alt is
+  held down while the toggle is active and released when it clears or the keyboard closes. It never goes down while
+  plain text is still queued: the press waits behind that text, and a plain character or Backspace that finds
+  Ctrl/Win/Alt down releases it first. Shift is added for Shift (key or left trigger) and shifted symbols; Tab uses
+  Right Shift because Steam takes LShift+Tab. Plain typing and swiped words stay on Steam's text path
   (`VirtualKeyboardManager.HandleVirtualKeyDown` -> `ControllerKeyboardSendText`, gamescope IME), always one
-  character per call: gamescope types a multi-character string on a temporary keymap over KEY_1, KEY_2, ...,
-  and Moonlight forwards scancodes, so Windows would receive "123456". Both paths are paced by shared send marks rather than
-  one queue: `TypeKey` sends straight through when nothing is queued and that key's gap has passed, and records the send;
-  otherwise the key waits in the queue — 30 ms between keys, 100 ms since the last press of the same physical key (even with other keys between;
-  `a`/`A`, `1`/`!` share a key), 100 ms after Backspace, Enter or another named key, 60 ms when Shift turns on or off,
-  and 40 ms around a Ctrl/Win/Alt chord so Shift cannot leak; non-ASCII is not sent. Shift, Caps, Ctrl, Win, Alt and
-  layout switches (`SwitchKeys_*`) are never queued: Steam applies them at once, and a key that has to wait is
-  queued with its case already decided (the character, and Steam's one-shots cleared, at the press), so a
-  toggle touched while output is queued applies once. Held Backspace (X, or a pad or touch
-  held on the key) repeats every 100 ms instead of Steam's 200 ms (`s_longPressRepeatThreshold`, restored by `stop()`;
-  Steam's 450 ms first delay stays), the same 100 ms as the same-key gap, so repeats never wait in the queue; a repeat
-  that finds a Backspace still queued is dropped, so nothing keeps deleting after release, and the suggestion row is
-  refreshed 200 ms after the last repeat instead of on every one. Measured on a Deck streaming to
-  Windows with Moonlight (the 30 ms base gap sits between the 25 ms row, 0 errors in 2161 chars, and the 35 ms row,
-  0 in 1233), and in a local gamescope harness: [BAKEOFFS-output.md](BAKEOFFS-output.md); source reading behind it in
-  [research/gamescope-ime.md](research/gamescope-ime.md) and [research/steam-text-path.md](research/steam-text-path.md).
-- **Settings panel.** Holding the emoji key (550 ms) opens a panel over the keys, in the keyboard's own rectangle
-  (854 x 286 CSS px on the Deck), at least `PANEL_MIN_H` (252) tall: with the suggestion row off the keyboard is
-  239 px, so the panel grows upward by 13 px and the pads' up/down range is stretched onto it (`panelPadY`). A short
-  press still switches to emoji. The emoji key has an 18 px dark corner badge with a 14 px light gear and a ring that
-  fills while it is held. Works with a pad click, the touchscreen and A on the gamepad-focused key. It fades in over
-  90 ms with a 1.5 % scale (none with `prefers-reduced-motion`). Frame, top to bottom: a 26 px tab bar of five
-  equal-width tabs across the whole width (icon and 12 px label, the active tab a lighter cell with a 2 px #4aa8ff
-  underline, the Words tab with its word count) and a 44 px ✕ at the right; the body; and a 20 px footer naming what
-  the buttons do on the focused row ("A Toggle", "◂ ▸ Change", "A Select", "A Forget", "L2/R2 Page" only on a paged
-  Words list, then "LB/RB Tabs", "B Close"; "A Confirm · B Cancel" while Forget everything is armed), the Words undo
-  and the Words pager. Tabs and rows (`PANEL_TABS`, `PANEL_ROWS` in `patch.js`; each tab is a left and a right column,
-  each column its sections, section headers in capitals):
+  character per call: gamescope types a multi-character string on a temporary keymap over KEY_1, KEY_2, ..., and
+  Moonlight forwards scancodes, so Windows would receive "123456". Both paths share the send marks in `OUT.at`: a key
+  goes straight through when nothing is queued and its gaps have passed, otherwise it waits in the queue. The gaps:
+  30 ms between keys, 100 ms since the last press of the same physical key (`a`/`A` and `1`/`!` share a key), 100 ms
+  after Backspace, Enter or another named key, 60 ms when Shift turns on or off, and 40 ms around a Ctrl/Win/Alt
+  chord. Non-ASCII is not sent. Shift, Caps, Ctrl, Win, Alt and layout switches (`SwitchKeys_*`) are never queued: a
+  key that has to wait is queued with its case already decided. Held Backspace (X, or a pad or touch held on the key)
+  repeats every 100 ms instead of Steam's 200 ms (`s_longPressRepeatThreshold`, restored by `stop()`; Steam's 450 ms
+  first delay stays); a repeat that finds a Backspace still queued is dropped, and the suggestion row refreshes 200 ms
+  after the last repeat. Measurements: [BAKEOFFS-output.md](BAKEOFFS-output.md) and
+  [BAKEOFFS.md](BAKEOFFS.md#on-a-real-deck-v22); source reading in [research/gamescope-ime.md](research/gamescope-ime.md)
+  and [research/steam-text-path.md](research/steam-text-path.md).
+- **Settings panel.** Holding the emoji key (550 ms) opens a panel over the keys, in the keyboard's own rectangle, at
+  least `PANEL_MIN_H` (252 px) tall: with the suggestion row off the keyboard is shorter, so the panel grows upward
+  and the pads' up/down range is stretched onto it (`panelPadY`). A short press still switches to emoji. The emoji key
+  carries a gear badge and a ring that fills while it is held. Pad click, touchscreen and A on the gamepad-focused key
+  all work. The frame is a tab bar of five tabs and a ✕, the body, and a footer naming what the buttons do on the
+  focused row. Tabs and rows (`PANEL_TABS`, `PANEL_ROWS` in `patch.js`; each tab is a left and a right column):
 
   | tab | left column | right column |
   |---|---|---|
   | Typing | Keys: Typing mode (Standard / Big keys), Swipe typing, Suggestion row | Spelling: Autocorrect, Learn new words, Automatic word spacing, Remove auto space before punctuation |
   | Input | Pads: Pad reach (Own half / Past middle / Whole / Right only), Full-width pad up/down (Balanced / Even / Stretched; only while a pad covers 100 %), Swipe threshold (Small / Normal / Large) | Buttons: Slide space bar to move cursor, LB / RB (Ctrl / Alt / Pick words / Off), Enter closes keyboard |
   | Look | Style: Theme (Modern / Steam / OLED), Glass (Off / Light / Strong), Swipe trail, Show typed text, Reset look | Opacity: the live preview, Keyboard background, Keys, Space bar, Top strip |
-  | Words | List (Learned (n) / Blocked (n)) across both columns, then 12 words a page, six down each column, with their count | |
+  | Words | List (Learned (n) / Blocked (n)) across both columns, then 12 words a page with their count | |
   | System | Privacy: Private mode, Keep typing log, Clear typing log, Forget everything | Controls: a help card for the pads and buttons, the version line |
 
-  The two columns meet at the middle of the panel, where Steam splits the pads (the left pad reaches 55 % of the
-  width from the left, the right pad 55 % from the right), so each thumb has its own column and both reach the tabs
-  and the ✕. Row ids give the row type: `t_<setting>` a toggle (`TOGGLE_LABELS`: label and one-line description, a
-  28 x 16 switch), `s_<setting>` a slider (`SLIDERS`: `label`, `desc`, `min`, `max`, `step`, `text(value)`; label,
-  description and value on one line and a track the full width of the row under them), `c_<setting>` a segmented row
-  (`CHOICES`, or `GLASS` for `blur`: 2-4 buttons, the current one blue, the description line is the selected
-  option's), then the actions `reset_look` and `clear_log` (description on the label's line, chevron), the danger row
-  `forget_all`, the list rows `w_0`..`w_11`, and the non-focusable `preview`, `version` and `help`. Labels are 12 px
-  medium, descriptions 10.5 px on a second line, segment buttons 11 px; toggles and segmented rows are 36 px, sliders
-  33 px, actions and words 26 px, 2 px apart. Every tab fits without scrolling at 252 px. One entry in the table adds
-  a setting of that type; every write goes through `setSetting`, which saves it and repaints only the rows bound to
-  that setting (`paintSetting`).
+  The two columns meet at the middle of the panel, where Steam splits the pads, so each thumb has its own column and
+  both reach the tabs and the ✕. Row ids give the row type: `t_<setting>` a toggle (`TOGGLE_LABELS`), `s_<setting>`
+  a slider (`SLIDERS`), `c_<setting>` a segmented row (`CHOICES`, or `GLASS` for `blur`), the actions `reset_look`,
+  `clear_log` and `forget_all`, the list rows `w_0`..`w_11`, and the non-focusable `preview`, `version` and `help`.
+  One entry in those tables adds a setting of that type; every write goes through `setSetting`, which saves it and
+  repaints only the rows bound to that setting (`paintSetting`). Narrower than 600 px the columns stack and the page
+  scrolls; narrower than 420 px the tab labels, descriptions and footer hints go.
 
-  Narrower than 600 px the columns stack and the page scrolls; narrower than 420 px the tab labels, descriptions and
-  footer hints go (container queries on the panel).
-
-  Pads. A pad pointing at a row rings and lightens it; pointing at a segment rings that segment and shows its
-  description in blue in place of the row's own ("Past middle: Each pad reaches three quarters across"), so a choice
-  can be read before it is clicked. Segment buttons take pad hits 5 px above and 8 px below themselves, which makes
-  them as tall as their row. Steam keeps the last hit element while the pad stays inside its rectangle, so
-  `panelPadNested` re-runs the hit-test when a row with segments is under the pad. A pad click on a slider sets the
-  value under it and then drags it with the pad until that pad is released (`P.drag`); a mouse drags it the same way.
-  Holding a pad within 20 px of the bottom (14 px of the top) of a page that does not fit scrolls it at 300 px/s.
-
+  Pads. A pad pointing at a row rings it; pointing at a segment rings that segment and shows its description in place
+  of the row's own, so a choice can be read before it is clicked. Steam keeps the last hit element while the pad stays
+  inside its rectangle, so `panelPadNested` re-runs the hit-test on rows with segments. A pad click on a slider sets
+  the value under it and drags it until that pad is released (a mouse does the same). Holding a pad near the top or
+  bottom of a page that does not fit scrolls it.
   Behaviour. One focus ring (2 px #4aa8ff outline on a blue fill) marks the focused row, and opening the panel focuses
   the tab's first row, so the ring is always there; up / down move through the active tab (the tab, the left column,
   then the right column) and wrap; the page scrolls just enough to keep the focused row (and its section header)
@@ -380,37 +311,15 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
   covers the keyboard, so look changes update the preview at once and reach the keyboard's stylesheets (`applyLook`)
   when the panel closes; rewriting those sheets restyles the whole document.
 
-  Performance. Each tab's DOM is built once (the open tab on open, the others one per 40 ms afterwards, laid out
-  hidden and then kept with `content-visibility: hidden`), rows are kept in a map, and a change touches only its row:
-  classes, inline transforms and text node data (replacing a text node re-runs Steam's `:has()` rules, 2.2 ms per
-  value at 4x). Each page scrolls on its own, so a tab switch only swaps two classes. Tab icons are inline SVG (data-URL
-  masks cost 20 ms of style on the first open). Measured with `node keyboard/sim/panel-perf.mjs` (`CPU=4` or `CPU=1`,
-  `PATCH=<file>` for another version; synchronous handler plus style and layout, 8 opens and 20 of each step;
-  `perf-test.mjs` checks the budgets; a task over 16 ms counts unless a V8 garbage collection of the engine's heap is
-  most of it, 25-90 ms at 4x and listed as `gcTasks`), median / p95 ms:
-
-  | at 4x CPU | measured | budget |
-  |---|---|---|
-  | first open | 34-42 | 60 |
-  | open again | 10.4 | 60 |
-  | tab switch (RB) | 2.6 / 7.3 | p95 16 |
-  | toggle (A) | 1.6 / 3.3 | p95 8 |
-  | Typing mode (◂ ▸) | 2.3 / 5.4 | p95 16 |
-  | slider step (◂ ▸) | 2.4 / 3.2-4.6 | p95 4 |
-  | tasks over 16 ms in 80 steps | 0 | 0 |
-  | panel open and idle, CPU | 0.4 % | 2 % |
-
-  The slider p95 is 3.2-3.6 ms on a quiet host and reached 4.2-4.6 ms in two of eight runs with other load; a
-  step is about 1 ms of script, 1 ms restyling the fill, knob and four preview keys, and up to 1 ms of layout. At 1x:
-  first open 18.6, open again 2.7, tab 0.7 / 2.0, toggle 0.5 / 0.9, slider 0.7 / 0.9. The panel builds nothing until
-  it opens. The first open lays out about 90 elements under Steam's stylesheets (style and first text layout are most
-  of it); every later open reuses them.
-
-  Re-measured on 2026-10-28 for the two-column layout (keyboard v31) on a busier host, at 4x, median / p95 over two
-  runs: first open 39-46, open again 14.5-15.2, tab 4.7-5.3 / 9.2-9.4, toggle 2.8-2.9 / 3.8-4.7, Typing mode
-  10.8-11.0 / 15.3-18.0, slider 3.7-4.2 / 5.6-6.3. v30 on the same host the same day, three runs: first open 34-51,
-  open again 11.3-14.0, tab 3.7-5.0 / 7.8-11.0, toggle 2.5-3.0 / 4.0-4.3, Typing mode 11.0-12.4 / 15.7-16.9, slider
-  3.3-4.8 / 5.0-5.9. The Typing mode step sits at its 16 ms budget on that host with either version.
+  Performance. The panel builds nothing until it opens. Each tab's DOM is built once (the open tab on open, the
+  others one per 40 ms afterwards, laid out hidden and then kept with `content-visibility: hidden`), rows are kept in a
+  map, and a change touches only its row: classes, inline transforms and text node data (replacing a text node re-runs
+  Steam's `:has()` rules). Each page scrolls on its own, so a tab switch only swaps two classes. Tab icons are inline
+  SVG (data-URL masks cost 20 ms of style on the first open). `node keyboard/sim/panel-perf.mjs` (`CPU=4` or `CPU=1`,
+  `PATCH=<file>`) measures open, tab, toggle, Typing mode and slider steps; `perf-test.mjs` holds them to these budgets
+  at 4x CPU: open <= 60 ms (first open included), tab switch and Typing mode p95 <= 16 ms, toggle and slider step p95
+  <= 8 ms, no task over 16 ms during the steps (unless a V8 garbage collection of the engine's heap is most of it,
+  listed as `gcTasks`), and an open idle panel <= 2 % CPU.
 
   The version line in System reads "VaporType vN · engine vN · words vN · pairs vN · modes vN · installed <date>"
   (`installed.json` beside the standalone injector; the plugin reports its own install date). Any hold (pad, touch,
@@ -437,77 +346,71 @@ The keyboard calls itself **VaporType** to users (version line, first-use card);
 - **Tap positions.** Every tapped letter's position (pad x/y after Steam's mapping and the mode remap, or the touch
   point; CSS px like the key geometry) is kept beside the word buffer, one entry per character (null when unknown,
   e.g. gamepad A), and passed as `ctx.taps` to `engine.suggest` and `engine.correct`.
-- **Typing log** (setting "Keep typing log", off in code). Per finished word: the swipe trace (points, pad tags,
-  times) or the tap positions, the decoder's or suggestion row's top candidates, the typed and the committed text,
-  and the outcome: kept, picked from the row, autocorrected, autocorrect undone, or deleted with Backspace (then
-  with the word typed next, the intended word). A tapped word also carries `erased`, the letters Backspace took out
-  of it before it was finished (each with its tap position, at most 24), and a pick made with a bumper carries `via`
-  ("LB" or "RB"). `env` records carry the versions and key settings and `geo` records
-  the key geometry whenever they change. A word record carries `how` (`space`, `punct`, `stop` for `.` `!` `?`,
-  `swipe`, `enter`) and `prev`, the previous word the engine used, when there is one. Same privacy rule as learning: a
-  word ended by Enter is logged when the line already had a word; the only word of a line is logged (`lone: true`,
-  `how: "enter"`) only if the engine already knows it, and an unknown one leaves nothing. A word left in the buffer
-  when the keyboard closes is not logged. When Enter ends a line with typing that wrote no `enter` record, a
-  `{type: "line", t}` record marks the boundary; none is written twice in a row without a word between. The host appends to
-  `typing-log.jsonl` (`~/homebrew/data/vaportype/` with the plugin, beside `user-words.json` with `inject.mjs`;
-  rotated to `.1` at 5 MB, two files kept), acknowledging each batch; Steam keeps at most 400 unwritten lines. A typing
-  log is private typing data: never commit one.
-- **Private mode** (setting, off): no learning (words, pairs, new-word counts), no autocorrect, no typing log, no
-  in-memory swipe log, and the typed-text field shows
-  "Private mode · hold here to turn off" instead of the text. Hold the typed-text field 550 ms (touch; a pad
-  there presses the number-row key below) to toggle it, or use the panel switch; a short press does nothing. Entering and leaving it reset the word
-  context (previous word, buffer, taps, undo state), so "hello" typed
-  in private mode and "world" after it never form a pair. `forgetAll()` (Forget everything) also resets that context,
-  clears the in-memory swipe log and the typing log and asks the host to delete `user-words.json.bak` and both log
-  files.
+- **Typing log** (setting "Keep typing log", off by default). Per finished word: the swipe trace (points, pad tags,
+  times) or the tap positions, the decoder's or the row's top candidates, the typed and the committed text, and the
+  outcome: kept, picked, autocorrected, autocorrect undone, or deleted with Backspace (then with the word typed next).
+  A tapped word also carries `erased`, the letters Backspace took out of it (with tap positions, at most 24), and a
+  bumper pick carries `via` ("LB" or "RB"). A word record carries `how` (`space`, `punct`, `stop` for `.` `!` `?`,
+  `swipe`, `enter`) and `prev`, the previous word the engine used. `env` records carry the versions and key settings
+  and `geo` records the key geometry whenever they change. Learning's privacy rule applies: the only word of a line is
+  logged (`lone: true`) only if the engine already knows it, and a word left in the buffer at close is not logged.
+  When Enter ends a line that wrote no `enter` record, a `{type: "line", t}` record marks the boundary, never twice
+  in a row. The host appends to `typing-log.jsonl` (`~/homebrew/data/vaportype/` with the plugin, beside
+  `user-words.json` with `inject.mjs`; rotated to `.1` at 5 MB), acknowledging each batch; Steam keeps at most 400
+  unwritten lines. A typing log is private typing data: never commit one.
+- **Private mode** (setting, off): no learning, no autocorrect, no typing log, no in-memory swipe log, and the
+  typed-text field shows "Private mode · hold here to turn off". Hold the typed-text field 550 ms (touch) or use the
+  panel switch. Entering and leaving it reset the word context, so a word typed in private mode never forms a pair
+  with the next one. `forgetAll()` (Forget everything) also resets that context, clears the in-memory swipe log and
+  the typing log and asks the host to delete `user-words.json.bak` and both log files.
 - **Safety.** Before changing anything the patch checks the Steam calls and keyboard methods it uses
-  (`SteamClient.Input` send calls, the layout module, `VirtualKeyboardManager.HandleVirtualKeyDown`, then on the
-  first keyboard `TypeKeyInternal`, `OnTrackpadAnalogInternal`, `StartLongPressTimer` and the rest of
-  `KB_METHODS`); if one is missing, or a patching step throws, it rolls back to stock Steam and `status()` reads
-  `vN unsupported Steam build: <what>`; re-injecting does not retry that build. Module scans back off from 30 s
-  to 10 min. `stop()` cancels the output queue and its timer (queued work carries a
-  generation number), restores every wrapped method and the pads' x/y properties, and releases held keys last;
-  closing the keyboard drops queued output, except the letters of swipes already released, which finish first;
-  `tapKey` releases in `finally`.
-- `window.__oskTrackpadFix.stop()` removes everything (layouts, prototype wraps, listeners, held keys, style,
-  trail, panel); `setSetting(name, on)` changes a setting,
-  `openSettings()` / `closeSettings()` drive the panel; `status()` reports
-  `vN layouts=N keyboard=patched|waiting swipe=on|off|no-engine mode=<id>`; `typeText(s)` sends text through the
-  output queue; `idle()` is true when nothing is queued or pending (the simulator waits on it); `keyboardOpen()` is
-  true while a keyboard is showing (the plugin saves when it closes).
+  (`SteamClient.Input` send calls, the layout module, `VirtualKeyboardManager.HandleVirtualKeyDown`, then on the first
+  keyboard the methods in `KB_METHODS`); if one is missing, or a patching step throws, it rolls back to stock Steam and
+  `status()` reads `vN unsupported Steam build: <what>`; re-injecting does not retry that build. Module scans back off
+  from 30 s to 10 min. `stop()` cancels the output queue (queued work carries a generation number), restores every
+  wrapped method and the pads' x/y properties, and releases held keys last. Closing the keyboard drops queued output
+  except the letters of swipes already released.
+- **API.** `window.__oskTrackpadFix`: `stop()` removes everything (layouts, prototype wraps, listeners, held keys,
+  styles, trail, panel); `setSetting(name, value)` changes a setting; `openSettings()` / `closeSettings()` drive the
+  panel; `status()` reports `vN layouts=N keyboard=patched|waiting swipe=on|off|no-engine mode=<id>`; `typeText(s)`
+  sends text through the output queue; `idle()` is true when nothing is queued or pending; `keyboardOpen()` is true
+  while a keyboard is showing; `forget(word)` and `forgetAll()` remove learned data. The host protocol is below.
 
-The back grips cannot be used: while the keyboard is open Steam swaps the controller to its built-in
-Big Picture config for app 769 (`controller_base/basicui_neptune.vdf`, log line "On Screen Keyboard Forcing to
-window type: KB ActionSet, AppID 769"); the game's own controller layout is inactive, the grips reach neither the keyboard
-nor the game, and user configs for 769 are ignored.
+The back grips cannot be used: while the keyboard is open Steam swaps the controller to its built-in Big Picture
+config for app 769 (`controller_base/basicui_neptune.vdf`, log line "On Screen Keyboard Forcing to window type: KB
+ActionSet, AppID 769"); the game's controller layout is inactive, the grips reach neither the keyboard nor the game,
+and user configs for 769 are ignored.
 
-`inject.mjs` re-evaluates `patch.js` every 5 s over CEF remote debugging (`CEF_PORT`, default 8080), so it
-survives Steam restarts. It first loads `swipe/words.js`, `swipe/lm.js`, `swipe/engine.js` and `modes.js` when Steam lacks their version,
-hands Steam the saved user words once per Steam start, writes them back when `takeUserWords()` reports a
-change and then confirms with `ackUserWords(rev)` (the patch keeps offering the data until confirmed), appends
-`takeTypingLog()` lines and confirms with `ackTypingLog`, and carries out `takeRequests()` (delete the backup or
-the log). Each cycle handles requests first. `takeRequests()` returns `{removeBackup?, clearLog?, rev}` and
-keeps offering it until `ackRequests(rev)`. A host announces that it acknowledges by setting
-`window.__oskTrackpadFix.hostAcks = true` after evaluating the patch, every cycle (the flag only turns on; reading it
-returns the state); after that a request is never dropped without `ackRequests(rev)`, however many takes fail.
-A host that never announces and never acknowledges has the request cleared after three offers. `inject.mjs`
-announces each cycle and acknowledges only when every deletion succeeded (a missing file counts as deleted), and the `takeUserWords()` payload carries `forgetGen`, which goes up with every Forget everything:
-when it changes within one Steam session (`hostSession`; a re-injected patch starts again at 0) the host writes the file without making a backup and deletes `.bak`, and if it changes while a
-save is in flight (`window.__oskTrackpadFix.forgetGen` read after the write) the host handles the requests again
-and saves the forgotten state before acknowledging, so a forget always wins over a save. A forget writes a
-tombstone, `forget.json` beside `user-words.json` (`{key, session, gen, pending}`; key is the page's `hostSession`,
-set by the injector, plus the request rev), listing `user-words.json`, `.bak`, `.tmp` and both log files, then
-deletes them. Paths that could not be deleted stay in `pending` and are retried every cycle; `user-words.json` and
-`.tmp` also leave it when a save from after the forget (same session with `forgetGen` at least the tombstone's, or a
-later session) replaces the file. The request is acknowledged only when `pending` is empty, and `loadUserWords`
-never loads a pending file, so a failed save after a forget cannot bring forgotten words back at the next Steam
-start (as the Decky plugin's `main.py`). One injector at a time: `inject.lock` holds its pid, a second one waits. HTTP discovery times out after
-3 s and the WebSocket open after 5 s; after failures it backs off up to 60 s. Overrides: `OSK_USER_WORDS`,
-`OSK_TYPING_LOG`, `OSK_LOG_MAX`, `OSK_INSTALLED`, `OSK_LOCK`, `OSK_CYCLE_MS`, `OSK_HTTP_TIMEOUT_MS`.
+## Host protocol and the standalone injector
 
-To run it without Decky: enable CEF remote debugging in Steam, assemble a runtime folder with
-`node keyboard/runtime.mjs <dir>` (`patch.js`, `modes.js`, `swipe/`, `inject.mjs`) and run `node <dir>/inject.mjs`,
-for example from a systemd user unit. Stopping the injector and restarting Steam removes the patch.
+A host (the Decky frontend, see [DECKY-NOTES.md](DECKY-NOTES.md), or `inject.mjs`) loads `swipe/words.js`,
+`swipe/lm.js`, `swipe/engine.js` and `modes.js` when Steam lacks their version, hands Steam the saved user words once
+per Steam start (`__oskUserWords`), evaluates `patch.js`, and then, each cycle, requests first:
+
+- `takeRequests()` returns `{removeBackup?, clearLog?, rev}` (Clear typing log, Forget everything) and keeps
+  offering it until `ackRequests(rev)`. A host announces that it acknowledges by setting `hostAcks = true` every
+  cycle; after that a request is never dropped unacknowledged. A host that never announces has it cleared after three
+  offers. Hosts acknowledge only when every deletion succeeded (a missing file counts as deleted).
+- `takeUserWords()` returns the learned data and settings with `rev` and `forgetGen`, confirmed with
+  `ackUserWords(rev)`; the patch keeps offering until confirmed. `forgetGen` goes up with every Forget everything:
+  when it changed since the last save in this Steam session, the host writes without a backup and deletes `.bak`, and
+  if it changes while a save is in flight the host handles the requests again and saves once more before
+  acknowledging, so a forget always wins over a save.
+- `takeTypingLog()` lines are appended and confirmed with `ackTypingLog`.
+
+A forget writes a tombstone first (`forget.json` beside `user-words.json` for `inject.mjs`, `plugin-settings.json` for
+the plugin), listing `user-words.json`, `.bak`, `.tmp` and both log files, then deletes them. Paths that could not be
+deleted stay pending and are retried every cycle; `user-words.json` and `.tmp` also leave the list when a save made
+after the forget replaces them. The request is acknowledged only when nothing is pending, and a pending file is never
+loaded, so a failed save after a forget cannot bring forgotten words back at the next Steam start.
+
+`inject.mjs` re-evaluates `patch.js` every 5 s over CEF remote debugging (`CEF_PORT`, default 8080), so it survives
+Steam restarts. One injector runs at a time (`inject.lock` holds its pid). HTTP discovery times out after 3 s and the
+WebSocket open after 5 s; after failures it backs off up to 60 s. Overrides: `OSK_USER_WORDS`, `OSK_TYPING_LOG`,
+`OSK_LOG_MAX`, `OSK_INSTALLED`, `OSK_LOCK`, `OSK_CYCLE_MS`, `OSK_HTTP_TIMEOUT_MS`. To run it without Decky: enable CEF
+remote debugging in Steam, assemble a runtime folder with `node keyboard/runtime.mjs <dir>` (`patch.js`, `modes.js`,
+`swipe/`, `inject.mjs`) and run `node <dir>/inject.mjs`, for example from a systemd user unit. Stopping the injector
+and restarting Steam removes the patch.
 
 ## Simulator (`keyboard/sim/`)
 
@@ -530,103 +433,53 @@ reopening: the keys exist and the space bar stopped moving, since Steam slides t
 side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`GLYPHS`, default
 `$HOME/.local/share/Steam/controller_base/images/api/light`) so they do not show as broken images.
 
-- `pnpm i`, then `node keyboard/sim/test.mjs`: first reproduces the stock bugs (rolled space comes out before `h`), then
-  injects `patch.js` and checks what the Windows side would receive for rolled typing, overshoot, one-shot and
-  locked Ctrl, Alt+Tab, Win+Shift+S, Win+s by mouse, Esc, Ctrl+Alt+Esc by mouse, Ctrl+Shift+T, LB/RB holds, LB / RB pressed while
-  `typeText` output is queued (text first, no Ctrl/Alt held under it, then the chord), touched Shift and Ctrl
-  while 10 characters are queued (`He`, Ctrl+c then a plain h), symbols, Shift+Tab, Ctrl+arrow, release on close, reopen, `stop()` and re-inject. `PRE_PATCH=<old patch.js>` tests the upgrade path,
-  `SHOTS=<dir>` saves screenshots.
-- `node keyboard/sim/swipe-test.mjs`: swipe typing end to end in Steam's real keyboard: one-pad and two-pad swipes, Right pad only driven through Steam's raw pad
-  mapping, taps that stay taps, Backspace after a swipe, Y / X / RT / touched space 0, 40 and 120 ms after a pad swipe
-  (always after the word), suggestion picks, completions, Shift, automatic space, punctuation,
-  learning a new word by tapping and then swiping it (strokes of about one key, like the two-pad "lo" of "hello", stay taps under the swipe threshold, so those scenarios swipe 1.5 keys past the last letter), touchscreen swipes and taps, two quick words on
-  alternating pads, tap-then-swipe, swipe off under Ctrl, left-pad-only "testing" at pad reach 75 and 100, the
-  setting's storage and refusal of invalid values, and `takeUserWords()`. Every scenario fails on a
-  multi-character SendText or the same physical key re-sent within 32 ms. `WITH_MODES=1` also loads `modes.js`
-  (so the default Big letter keys mode is active).
-- `node keyboard/sim/padedge-test.mjs`: pad edges through Steam's raw pad mapping in Standard, Big letter keys,
-  reach 75 and 100, Right pad only 1:1/2:1/3:1, threshold 130, the typed-text field off and the suggestion
-  row off, both pads: at uy ±1 and ±0.98 (ux -1, -0.5, 0, 0.5, 1) and ux ±1/±0.98 the hover and the press hit the
-  same real key (the number row or a chip showing a word at the top, the bottom row at the bottom); clicks at the top
-  edge press it; a word swiped off the top edge still decodes.
-- `node keyboard/sim/open-bounds-test.mjs` (`PATCH_SRC=<file>`, `MODES_SRC=<file>` test other sources): hide, show,
-  and every 30 ms for a second raw pad samples aimed at a row of letters on both pads (Standard, Big letter keys,
-  reach 75 and 100, Right pad only 2:1 and 3:1), compared with stock Steam run the same way: after the space bar stops
-  moving every press must hit the aimed key and none may be wrong later than stock's last wrong hit + 50 ms.
-- `node keyboard/sim/twopad-test.mjs`: both pads at once through Steam's raw pad mapping (`twopad.mjs` drives both pads
-  on an 8 ms tick, a resting thumb is a pad sampled with ±0.002 jitter and no press, a lift is no more samples):
-  two swipes pressed at the same time (either pad first, and 3 s long at 120 Hz) type both words in press order;
-  a swipe is typed within 100 ms of release with the thumb lifted, the other thumb resting, or both resting;
-  alternating taps at 8 and 12 per second, and rolled taps with overlapping 110 ms holds, keep every letter in
-  order, each out within 120 ms of its release; "drag" + "on" across the pads still joins with the second press
-  30 and 120 ms after the first release; "the" then "only" 100 ms later stays two words without a Backspace;
-  closing the keyboard 0/20/40/60 ms after a one-pad and a two-pad swipe types the whole word(s), a close with other
-  output queued behind the word types only the word, a close with other output queued between two swipes types both
-  words and drops the output between them, a close with no swipe still drops queued output; at 4x CPU,
-  LB, RB, Y, X and RT pressed 0/10/20/40 ms after a two-pad swipe come out after both words, once.
-  `node keyboard/sim/twopad-bench.mjs` (`N`, `N3`, `CPU`, `PATCH`,
-  `MODES`, `CASES=1,3`, `PROFILE=<case>` for self time and forced-layout callers, `OUT=<json>`) prints the
-  table in [BAKEOFFS.md](BAKEOFFS.md#two-pads-at-once).
-- `node keyboard/sim/leak-test.mjs` (`OPENS`, `SAMPLES`, `CPU`): opens and closes the keyboard `OPENS` times (40) with
-  stock Steam and with the patch, then sends pad samples to every handler registered with
-  `RegisterForControllerAnalogInputMessages`, as Steam's client does. Stock must leak one registration per open of
-  each of the three kinds; patched must stay at two (the keyboard that was open before the patch loaded and the live
-  one), still drive both pads, give the input back to a keyboard that mounts again, and restore everything on
-  `stop()`. The sim's `mock.js` keeps `Register…` callbacks in `window.__steamRegs` for this.
-- `node keyboard/sim/deadzone-test.mjs`: the swipe-start gate on the pads, driven through Steam's raw pad mapping with
-  timed samples: 10 seeded resting-thumb random walks (0.6-1.2 keys over 300-800 ms, touch-down jolt) must stay taps,
-  smoothstep rolls may start at most 10 % swipes, seven accidental swipes logged on the Deck (the logged "red"
-  replayed point by point, "as" x3, "hmm", "tree" and "oh" synthesized from the logged sample count, duration and path
-  length in three speed profiles each) must all stay taps, fast "to", "it", "we", "hi" still decode, a press without
-  movement, a 0.45-key jolt at touch-down and a slow 1.2-key creep stay taps. `DEADZONE_BENCH=1` runs 120 drifts per
-  corpus plus 12 short words at 6, 10 and 16 keys/s and prints JSON (`STOCK=1` skips the patch, `PATCH_SRC=<file>`
-  tests another patch.js, `DEADZONE=80|100|130` picks a preset).
-- `node keyboard/sim/settings-test.mjs`: the settings panel: emoji tap vs hold by pad, touch and A, pad
-  clicks on the panel not typing, B and ✕, D-pad focus, each switch's effect, the LB / RB choice (Off: LB holds no Ctrl; Pick words: no Ctrl either; Ctrl / Alt: LB holds Ctrl again, no chip badges left), the suggestion row removed
-  with keycodes still aligned, the Pad reach segments (75 widens the pointer areas once the panel closes, an invalid
-  value is refused; Full-width pad up/down shown only for Whole and Right pad only), the Words lists (counts, tap to forget with the undo offer, Blocked, the ‹ › pager over every learned word),
-  Forget everything, closing with the keyboard, and settings coming back from the `takeUserWords()` JSON after a
-  "Steam restart" (new page) and from `localStorage` (a setting changed after the last file save beats the older file
-  copy; a newer file beats an older `localStorage`), the Look sliders (defaults, D-pad step and held repeat,
-  clamping, a pad click on the track, the look CSS applied on close, Glass, Reset look), the pads through Steam's
-  analog callback (a sweep of both pads over every tab, keyboard full and short: every control reached, nothing
-  outside the panel hit, every page fits without scrolling; a pad on a segment ringing it and showing its description
-  in the row; a pad click on a slider's track setting it and dragging it until release, one on its label dragging
-  from the current value), and the old `opacity`
-  setting migrating (80, OLED 90, Steam 100, 70, a full v0.2.3 settings object, junk values), a saved Fast taps or
-  Columns mode loading as Big letter keys and a saved `onePad: true` as Right pad only. `SHOTS=<dir>` saves
-  panel screenshots.
-- `node keyboard/sim/menu-test.mjs` (`PATCH=<file>` for another version): the panel's frame (one 26 px bar of five
-  equal tabs with icons and the ✕ across the whole width, no wordmark or status, two columns meeting at the middle,
-  section headers, a 20 px footer with hints) and rows (12 px label, a one-line 10.5 px description under it, control
-  on the right, 36 px); the Words tab count; LB / RB through all tabs with the wrap and the focus on the new tab, left
-  / right and A on the tab bar, LT / RT paging a 12-a-page Words list and stepping tabs elsewhere; one focus ring, up /
-  down wrapping through the tab, the left column and the right column with nothing scrolling; a held stick repeating
-  at about 8 per second after 350 ms with Steam's repeats ignored; toggles by A, left / right moving to the row beside
-  it in the other column; X, Y and Backspace doing nothing; segmented rows by A, left / right (stopping at the ends)
-  and a click; sliders by left / right, a held direction, A and a click on the track (a click on the label changes
-  nothing); the preview heading the Opacity column; the live preview following a slider step without re-rendering
-  the rows; no node of the panel replaced by
-  toggles, sliders or tab switches; Words forget / undo (and its 5 s expiry) and unblock / undo; Forget everything
-  arming, B cancelling it before closing the panel, and the 5 s window; touch acting on release and not after a
-  scroll, mouse hover not moving the focus; and with the panel open or closed that bumper, trigger, stick and face
-  presses and releases reach Steam only when the panel did not take them and no Ctrl / Alt is left held (LB / RB on
-  or off), and an LB held while the keyboard closes whose release never arrives leaves no Ctrl on reopening.
-- `node keyboard/sim/latency.mjs` (`PATCH=<file>`, `SETTINGS='{"reach":"right"}'`, `N=20`, `WITH_MODES=0` to leave out
-  `modes.js`): pad tap and swipe latency through Steam's real pad mapping, with raw pad positions computed through
-  the mode's and the full-width remap. `openSim({ backdrop: true })` / `SIM_BACKDROP=1` puts a fake chat page behind the
-  keyboard for see-through screenshots.
-- `node keyboard/sim/perf-test.mjs` (`CPU=4`, Chromium CPU throttling): with the keyboard closed, loading `patch.js`
-  does not build the engine, the engine is built and warmed in short background steps before the first open, and
-  nothing paints; the first open is not rendered twice and does no engine work in its first 250 ms; an open, untouched
-  keyboard requests no animation frames and changes no DOM; held X repeats Backspace about 10 times a second, never
-  closer than 100 ms, does not pile up behind queued text; the settings panel budgets from `panel-perf.mjs` (open
-  <= 60 ms first time included, tab p95 <= 16, toggle p95 <= 8, Typing mode p95 <= 16, slider step p95 <= 8, no task
-  over 16 ms during the steps, idle panel <= 2 % CPU; a set over budget is measured once more and must pass then);
-  `stop()` restores Steam's interval; typing works with no animation frames at all; stepping the Typing mode back and
-  forth runs no task over 16 ms at 4x (a gap sampler, excluding the 150 ms after each switch itself). `node keyboard/sim/perf-bench.mjs` (`CPU=6`, `FPS=15` throttles rAF, `STOCK=1` for
-  Steam's keyboard without the patch, `PROFILE=<file>` with `WINDOW=open|all` for a CPU profile) prints the costs
-  in [BAKEOFFS.md](BAKEOFFS.md#startup-idle-and-backspace).
+Several suites take `PATCH=<file>` or `PATCH_SRC=<file>` to test another `patch.js`, and several `SHOTS=<dir>` for
+screenshots.
+
+- `node keyboard/sim/test.mjs`: first reproduces the stock bugs (a rolled space comes out before `h`), then checks
+  what the Windows side would receive for rolled typing, overshoot, one-shot and locked Ctrl, chords (Alt+Tab,
+  Win+Shift+S, Ctrl+Shift+T, Ctrl+Alt+Esc by mouse), Esc, LB/RB holds, bumpers and touched modifiers while `typeText`
+  output is queued, symbols, Shift+Tab, release on close, reopen, `stop()` and re-inject. `PRE_PATCH=<old patch.js>`
+  tests the upgrade path.
+- `node keyboard/sim/swipe-test.mjs`: swipe typing end to end: one-pad and two-pad swipes, Right only, taps that stay
+  taps, Backspace after a swipe, keys pressed 0-120 ms after a swipe, picks, completions, Shift, automatic space,
+  punctuation, learning a new word, touchscreen, alternating words, tap-then-swipe, swipe off under Ctrl, reach 75 and
+  100, and `takeUserWords()`. Every scenario fails on a multi-character SendText or the same physical key re-sent
+  within 32 ms. `WITH_MODES=1` also loads `modes.js`.
+- `node keyboard/sim/padedge-test.mjs`: pad edges through Steam's raw pad mapping in each mode, reach and full-width
+  ratio, with the typed-text field or the suggestion row off: the hover and the press hit the same real key at every
+  edge, and a word swiped off the top edge still decodes.
+- `node keyboard/sim/open-bounds-test.mjs` (`MODES_SRC=<file>`): pad presses every 30 ms while the keyboard slides in,
+  against stock Steam: once the space bar stops moving every press must hit the aimed key.
+- `node keyboard/sim/twopad-test.mjs`: both pads at once (`twopad.mjs` drives them on an 8 ms tick; a resting thumb is
+  a pad sampled with jitter and no press): simultaneous swipes, commit latency with the other thumb resting,
+  alternating and rolled taps in order, joins and non-joins across the 220 ms window, closing 0-60 ms after a swipe,
+  and bumpers or keys right after a two-pad swipe at 4x CPU. `twopad-bench.mjs` prints the table in
+  [BAKEOFFS.md](BAKEOFFS.md#two-pads-at-once).
+- `node keyboard/sim/leak-test.mjs` (`OPENS`, `SAMPLES`, `CPU`): opens and closes the keyboard 40 times with stock
+  Steam and with the patch and counts the handlers registered with `RegisterForControllerAnalogInputMessages`: stock
+  leaks one per open of each kind, patched stays at two, still drives both pads and restores everything on `stop()`.
+  `mock.js` keeps the callbacks in `window.__steamRegs`.
+- `node keyboard/sim/deadzone-test.mjs`: the swipe gate on timed pad samples: resting-thumb walks and rolls stay taps,
+  seven accidental swipes logged on a Deck stay taps, fast short words still decode. `DEADZONE_BENCH=1` prints the
+  bench in [BAKEOFFS.md](BAKEOFFS.md#swipe-deadzone) (`STOCK=1`, `DEADZONE=80|100|130`).
+- `node keyboard/sim/settings-test.mjs`: the settings panel end to end: emoji tap vs hold, pad clicks on the panel not
+  typing, every switch's effect, LB / RB choices, Pad reach and Full-width pad up/down, the Words lists, Forget
+  everything, settings coming back from the file and from `localStorage` (the newer copy wins), the Look sliders and
+  Glass, pad sweeps over every tab (every control reached, nothing outside hit, every page fits), and migration of old
+  settings (`opacity`, removed modes, `onePad: true`).
+- `node keyboard/sim/menu-test.mjs`: the panel's frame and rows, LB / RB / LT / RT tab and page steps, focus and its
+  wrap, held-stick repeat, every row type by D-pad, A and click, no panel node replaced by a step, Words forget /
+  undo, Forget everything arming and cancel, touch and hover rules, and which buttons reach Steam with the panel open
+  or closed.
+- `node keyboard/sim/latency.mjs` (`SETTINGS='{"reach":"right"}'`, `N`, `WITH_MODES=0`): pad tap and swipe latency
+  through Steam's real pad mapping. `openSim({ backdrop: true })` / `SIM_BACKDROP=1` puts a fake chat page behind the
+  keyboard.
+- `node keyboard/sim/perf-test.mjs` (`CPU=4`): loading does not build the engine, the engine warms in short background
+  steps, the first open does no engine work, an idle open keyboard requests no frames and changes no DOM, held X
+  repeats Backspace at 10 per second without piling up, the settings panel stays within the `panel-perf.mjs` budgets,
+  typing works with no animation frames, and stepping Typing mode runs no task over 16 ms. `perf-bench.mjs` (`CPU`,
+  `FPS`, `STOCK=1`, `PROFILE=<file>`) prints [BAKEOFFS.md](BAKEOFFS.md#startup-idle-and-backspace).
 - `node keyboard/sim/echo-test.mjs`: the typed-text field: geometry and raw pad mapping unchanged with it on, its
   area hits no key, pad taps, a swiped word, Backspace after a swipe and after a tap, suggestion picks, Enter,
   outside touch, arrows, Tab, Ctrl chord, Esc, 60-character tail, the 30 s gap, hidden under the panel, the switch,
@@ -690,23 +543,17 @@ side. `run.mjs` serves Steam's controller glyphs from the local Steam install (`
 - `node keyboard/sim/zoom-test.mjs`: `zoom: 1.5` on the keyboard root, once with legacy Chromium zoom (Desktop Mode's
   rects without zoom, standalone keyboard) and once standardized: touch taps and swipes, a pad swipe, trail, overlay,
   tip and settings panel placement, and closing the panel by pad and touch.
-- `node keyboard/sim/inject-test.mjs`: the sim with a CDP port, patched by the real `inject.mjs` (250 ms cycle): user words
-  loaded, written back and then acknowledged, the install date in the version line, typing-log append, ack,
-  rotation (4000-byte limit in the test), Clear typing log and forgetAll deleting files, the lock file stopping a
-  second injector, the HTTP discovery timeout against a silent port, and the words coming back after a "Steam
-  restart".
-- Benches in `keyboard/bench/`: `bench.mjs` (decoder on synthetic traces from the real key geometry,
-  `geometry.json` from `keyboard/sim/dump-keys.mjs`), `bench-sentences.mjs` (`corpora/chat-corpus.txt` with context: swipe,
-  phrases, autocorrect false and true fixes, next-word prediction), `bench-onepad.mjs`, `bench-modes.mjs`
-  (pad taps with noise in mm on the Standard and Big letter keys maps, typed literally and through autocorrect). Results and the decisions taken from them are in
-  [BAKEOFFS.md](BAKEOFFS.md); the traces and taps are simulated, not recorded on the deck. `bench-log.mjs` is the
-  exception: it replays a real typing log (`OSK_TYPING_LOG`, `OSK_LOG_SINCE`, `OSK_USER_WORDS`) through the suggestion
-  row and autocorrect and prints what picking and autocorrect saved or would have saved. `bench-predict.mjs` replays
-  one or more typing logs (`OSK_TYPING_LOG`, `:`-separated, `OSK_LOG_SINCE`) or a text file (`--text`, two passes)
-  through a fresh engine that learns word by word as the keyboard does, and prints next-word and completion hit rates.
-  `bench-chips.mjs` does the same replay through the row as `patch.js` builds it (which slots show what, with the log's
-  own key geometry and tap positions) and prints, per number of typed letters, how often the word is in the first
-  chip, in two, in three and in the row as shown, the presses saved if every shown word were picked at once, the share
-  of chips that do not extend a correctly typed prefix, and how many real typos (a pick that was not a completion) the
-  row offers; `--legacy` builds the row as keyboard v35 did. `gates.mjs` runs it on the chat corpus and on a list of
-  row cases (`ROW_CASES`).
+- `node keyboard/sim/inject-test.mjs`: the sim with a CDP port, patched by the real `inject.mjs` (250 ms cycle): user
+  words loaded, written back and acknowledged, the install date in the version line, typing-log append, ack and
+  rotation, Clear typing log and Forget everything deleting files, the lock file, the HTTP discovery timeout, and the
+  words coming back after a "Steam restart".
+- Benches in `keyboard/bench/` run the engine on simulated traces and taps, not Deck recordings, except the log
+  replays. `bench.mjs` (decoder on synthetic traces from the real key geometry, `geometry.json` from
+  `keyboard/sim/dump-keys.mjs`), `bench-sentences.mjs` (`corpora/chat-corpus.txt` with context: swipe, phrases,
+  autocorrect, next word), `bench-typos.mjs` (one typo per word, tap noise), `bench-onepad.mjs`, `bench-modes.mjs`
+  (pad taps with noise in mm), `bench-vocab.mjs`. Log replays (`OSK_TYPING_LOG`, `OSK_LOG_SINCE`, `OSK_USER_WORDS`):
+  `bench-log.mjs` (what picking and autocorrect saved or would have saved), `bench-predict.mjs` (next-word and
+  completion hit rates with online learning; also `--text`), `bench-chips.mjs` (the row as `patch.js` builds it: the
+  measure for any suggestion change), `bench-real.mjs` (a saved swipe log, `OSK_REAL_SWIPES`). `gates.mjs` holds the
+  accuracy floors and row cases (`FLOORS`, `ROW_CASES`) that `pnpm test` enforces. Results and decisions:
+  [BAKEOFFS.md](BAKEOFFS.md).
