@@ -510,6 +510,50 @@ async function consent() {
     { s3: { consent: s3.consent, autocorrect: s3.autocorrect, echo: s3.echo, learn: s3.learn, open: s3.open } },
   );
   await page.close();
+
+  ({ page } = await fresh({
+    consent: false,
+    userWords: { version: 1, words: {}, bigrams: {}, settings: { consent: false, learn: true, echo: true, tipShown: false } },
+  }));
+  h = helpers(page);
+  await settle(page);
+  const s4 = await h.F(() => ({
+    ...window.__oskTrackpadFix.settings,
+    effEcho: window.__oskTrackpadFix.effective("echo"),
+    effLearn: window.__oskTrackpadFix.effective("learn"),
+    card: !!document.querySelector('[data-key="OSKSet_consent_on"]'),
+  }));
+  await h.vgp("vgp_onbuttondown", 2);
+  await h.vgp("vgp_onbuttonup", 2);
+  await settle(page);
+  await h.F(() => window.__oskTrackpadFix.openSettings());
+  await settle(page);
+  const pick = () => h.F(() => ({ ...window.__oskTrackpadFix.settings, effLearn: window.__oskTrackpadFix.effective("learn") }));
+  await h.tap("OSKSet_t_learn");
+  await settle(page);
+  const off = await pick();
+  await h.tap("OSKSet_t_learn");
+  await settle(page);
+  const on = await pick();
+  check(
+    s4.echo === false &&
+      !s4.effEcho &&
+      !s4.effLearn &&
+      s4.card &&
+      off.learn === false &&
+      off.consent === false &&
+      on.learn === true &&
+      on.consent === true &&
+      on.effLearn === true &&
+      on.echo === false,
+    "an unanswered 0.2 install with echo on loads with Show typed text off; switching Learn new words on in Settings answers the card, switching it off does not",
+    {
+      s4: { consent: s4.consent, learn: s4.learn, echo: s4.echo, effEcho: s4.effEcho, effLearn: s4.effLearn, card: s4.card },
+      off: { learn: off.learn, consent: off.consent },
+      on: { learn: on.learn, consent: on.consent, effLearn: on.effLearn },
+    },
+  );
+  await page.close();
 }
 
 async function naming() {
@@ -562,6 +606,7 @@ async function backIntoWord() {
   await h.word("good");
   const before = await h.user();
   await h.word("track");
+  await h.F(() => window.__oskTrackpadFix.flushLog());
   await h.tap("Backspace");
   await h.word("ed");
   for (let i = 0; i < 2; i++) {
@@ -607,7 +652,7 @@ async function backIntoWord() {
       !known[0] &&
       known[1] &&
       out.endsWith("good track ⌫ed zqvxplorr ⌫⌫ zqvxplorr ⌫⌫ you,⌫r ⏎hell ⌫o "),
-    "Backspace over the space or comma after a typed word takes the word back: the letters typed next finish it, and the first ending is neither logged nor learned",
+    "Backspace over the space or comma after a typed word takes the word back (also after the log was flushed): the letters typed next finish it, and the first ending is neither logged nor learned",
     {
       recs,
       erased,

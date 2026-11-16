@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 39;
+  const VERSION = 40;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -352,6 +352,7 @@
       s = { ...s, ...fromOpacity(s.opacity, s.theme) };
     if (s && typeof s === "object" && !("consent" in s)) out.consent = true;
     for (const k of Object.keys(DEFAULTS)) if (validSetting(k, s?.[k])) out[k] = s[k];
+    if (s?.consent === false) out.echo = false;
     if (s?.onePad === true) out.reach = "right";
     return out;
   }
@@ -2028,6 +2029,11 @@
     if (r.pending === undefined) delete state.pending[k];
     else state.pending[k] = r.pending;
     if (r.rec && LOG.staged === r.rec) LOG.staged = null;
+    else if (r.rec) {
+      const line = JSON.stringify(r.rec);
+      const i = LOG.out.findLastIndex((x) => x[1] === line);
+      if (i >= 0) LOG.out.splice(i, 1);
+    }
     T.buf = r.buf;
     T.taps = r.taps;
     T.fix = r.fix;
@@ -3610,7 +3616,11 @@
         if (r.p !== paused) b.classList.toggle("paused", (r.p = paused));
         setInfo(r, paused ? (settings.privateMode ? "Paused while private mode is on" : "Paused until first use is answered") : desc);
       },
-      act: () => setSetting(k, !settings[k]),
+      act: () => {
+        const on = !settings[k];
+        setSetting(k, on);
+        if (k === "learn" && on && !settings.consent) setSetting("consent", true);
+      },
     };
     labelEl(b, label, r);
     b.appendChild(el("osk-set-switch"));
