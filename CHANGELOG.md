@@ -15,7 +15,8 @@ Keyboard v40, engine v11, word pairs v6. Changes since 0.2.8.
 - **Solid keyboard.** The keyboard background and the top strip are opaque by default. Lower Settings → Look → Keyboard
   background to see the game through it (#1).
 - **Show typed text** is a normal setting, off by default, and no longer part of the first-use card.
-- If you updated from 0.2 without answering the card, Show typed text is off; turn it on in Settings → Look.
+- If you updated from 0.2 without answering the card, Show typed text is off. Answer the card first, then turn it on in
+  Settings → Look; until the card is answered it turns off again at the next start.
 - Installs that already answered the card keep their own learning, typed-text and look settings.
 
 ### Suggestions
