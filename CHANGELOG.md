@@ -4,6 +4,21 @@ Every release since 0.2.7. Versions 0.2.9 and 0.2.10 were never published on the
 To update, install the same URL again (README, Install). Learned words and settings are kept. From 0.3.1 on, VaporType
 updates itself.
 
+## 0.3.2 — 2026-11-18
+
+Keyboard v43, engine v12. To upgrade from 0.3.1, choose **Update with Decky…** in Quick Access → VaporType → Updates.
+This release replaces the updater itself, so it needs one confirmation. Learned words and settings are kept.
+
+- Two-thumb swipes handle short, imprecise landings better. First-choice accuracy on the held-out sloppy two-pad
+  simulation rose from 77.5% to 84.9%; this is not a measurement of Deck typing accuracy.
+- Hold the emoji key and open **System → Two-thumb practice** to try the handoff without typing into the active app.
+- Hold **Esc** with a trackpad to toggle Private mode before typing, or switch it on in Quick Access → Privacy.
+  A short tap still sends Escape.
+- Turning off automatic updates cancels an install waiting for the keyboard to close. Future compatible frontend
+  updates switch only after all files are on disk; backend changes go through Decky.
+- Changing typing mode no longer redraws the keyboard behind Settings. Quick Access shows when settings are loading
+  and prevents repeat presses while deleting typing data.
+
 ## 0.3.1 — 2026-11-16
 
 Keyboard v42, engine v11, word pairs v6. Changes since 0.3.0.

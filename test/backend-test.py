@@ -224,7 +224,7 @@ async def run():
 
 
 ROOT = os.path.dirname(here)
-TOP_FILES = ["plugin.json", "package.json", "main.py", "LICENSE", "README.md", "test-record.json"]
+TOP_FILES = ["plugin.json", "package.json", "main.py", "LICENSE", "README.md", "CHANGELOG.md", "test-record.json"]
 
 
 def package_tree(version, main_extra=""):

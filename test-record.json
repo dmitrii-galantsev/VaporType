@@ -1,5 +1,5 @@
 {
-  "tested": "2026-11-18T08:05:18.129Z",
+  "tested": "2026-11-18T22:00:33.592Z",
   "keyboard": 43,
   "tests": [
     "keyboard/sim/test-all.sh (simulator suites and engine gates)",
@@ -8,10 +8,11 @@
   ],
   "files": {
     "plugin.json": "05c6edd378d5b4bee231a69c331b7e8da2365ff2b7c5ea8fb145513a98cffcbc",
-    "package.json": "a187b378a27f7ab090eb21b7f292d51b654c00e7d66d1f3537483eb306bf0d2e",
-    "main.py": "8081020111b04f6e58e315a3847b5ba83a7d81528b8c51e3d3094b014944ea36",
+    "package.json": "169cfdd3f357307caf9cb16e2aae4203e96db380c268c2a2e22d65ae587acb4e",
+    "main.py": "bd0f7f3fe1fb59ff3493526ec44a5dd72dcf109cd43db08f3b68d0bd1c3805bf",
     "LICENSE": "5a7445d47bb56558a68eeaa97951332d4e0a0af39b9242ef92d77f7be1835718",
     "README.md": "532379ef0698c45c8ae3db25075dd370d157decf9777d7903414c4f449e01d31",
+    "CHANGELOG.md": "90a70a00ae94d22e8fa22035e3371d4a34c4af13985757ad8ba552d807b8b714",
     "dist/index.js": "cd7b418416fd46a6d925bcfba4bf32c0af66c095b3de23c685fd9259abe6d725",
     "dist/index.js.map": "e5b5934b0cc8efabc4006bd3cc854dda3581e79c3e610c6648a72807dbdca3e0",
     "dist/keyboard/manifest.json": "b1ce7c5579969446a76e1390e36bb6326b1137413a2e2219b8482767576277a0",

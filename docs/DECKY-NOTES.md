@@ -102,8 +102,8 @@ before atomically replacing `dist/index.js` with its module entry point. Keyboar
 An interruption before the switch leaves the old frontend active; after the switch the complete new one is active.
 A later update removes older payloads but retains the previous active version. The package version shown by Decky
 remains the last full install; VaporType also shows the active frontend version. Backend code is never rewritten by
-this path. Install the first build that changes from the old updater using Decky or the documented backed-up local
-deploy procedure: an existing installation still uses its old updater until the new backend is loaded.
+this path. The 0.3.2 zip includes a new top-level `CHANGELOG.md`: the 0.3.1 updater detects the new file and offers
+**Update with Decky…** instead of rewriting its running backend. Later frontend-only updates do not need that prompt.
 Success records `updated: {from, to, at, auto}`, which the new version reads once (`take_update_record`) and turns into
 one toast when the update was automatic.
 

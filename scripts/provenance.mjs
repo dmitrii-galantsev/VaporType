@@ -13,6 +13,7 @@ export const PACKAGE = [
   "main.py",
   "LICENSE",
   "README.md",
+  "CHANGELOG.md",
   "dist/index.js",
   "dist/index.js.map",
   "dist/keyboard/manifest.json",

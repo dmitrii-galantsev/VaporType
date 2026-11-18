@@ -189,7 +189,7 @@ def needs_decky(tree, root):
         if {k: v for k, v in old.items() if k != skip} != {k: v for k, v in new.items() if k != skip}:
             return f"{name} changed"
     for name, data in tree.items():
-        if name.startswith("dist/") or name in ("plugin.json", "package.json", "README.md", "test-record.json"):
+        if name.startswith("dist/") or name in ("plugin.json", "package.json", "README.md", "CHANGELOG.md", "test-record.json"):
             continue
         if (root / name).read_bytes() != data:
             return f"{name} changed"
