@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = 42;
+  const VERSION = 43;
   const prior = window.__oskTrackpadFix;
   if (prior?.version === VERSION && (!prior.stopped || prior.unsupported)) return prior.status();
   window.__oskTrackpadFix?.stop?.();
@@ -216,7 +216,10 @@
       [["Opacity", ["preview", "s_boardAlpha", "s_keyAlpha", "s_spaceAlpha", "s_stripAlpha"]]],
     ],
     words: [[["", ["c_list", "words"]]]],
-    system: [[["Privacy", ["t_privateMode", "t_typingLog", "clear_log", "forget_all"]]], [["Controls", ["updates", "help", "version"]]]],
+    system: [
+      [["Privacy", ["t_privateMode", "t_typingLog", "clear_log", "forget_all"]]],
+      [["Controls", ["practice", "updates", "help", "version"]]],
+    ],
   };
   const PANEL_MIN_H = 252;
   const PANEL_NARROW = 600;
@@ -900,10 +903,10 @@
   }
 
   function modeChanged() {
+    if (P.open) return;
     for (const kb of openKeyboards()) {
       try {
-        window.__oskModes?.sync?.(kb, settings.mode, modeApi);
-        refreshSuggestions(kb);
+        window.__oskModes?.sync?.(kb, layoutSupported() ? settings.mode : null, modeApi);
       } catch (e) {
         note(e);
       }
@@ -937,7 +940,8 @@
     if (P.open && (LOOK.has(name) || SLIDERS[name])) P.lookDue = true;
     else if (LOOK.has(name)) for (const doc of documents()) applyLook(doc);
     else if (SLIDERS[name]) for (const doc of documents()) applyLookVars(doc);
-    if (name === "echo" || name === "suggestions" || name === "privateMode" || name === "mode" || name === "reach") scheduleEcho();
+    if (name === "echo" || name === "suggestions" || name === "privateMode" || (!P.open && (name === "mode" || name === "reach")))
+      scheduleEcho();
     if (name === "mode" || name === "oneAspect" || name === "reach") modeChanged();
     if (name === "bumpers" || name === "suggestions") for (const kb of openKeyboards()) refreshBadges(kb);
     paintSetting(name);
@@ -1199,7 +1203,7 @@
       chars = chars.slice(-(ECHO_SHOW - 1));
       lead = true;
     }
-    const shown = settings.privateMode ? "Private mode · hold here to turn off" : (lead ? "…" : "") + chars.join("");
+    const shown = settings.privateMode ? "Private mode · hold Esc to turn off" : (lead ? "…" : "") + chars.join("");
     renderBadge(host, where);
     const mark = !settings.privateMode && EC.mark && performance.now() < EC.mark.until ? EC.mark.text : "";
     const at = mark ? shown.lastIndexOf(mark) : -1;
@@ -2809,8 +2813,8 @@
     SW.echoHold = null;
   }
 
-  function startEmojiHold(kb, side, el) {
-    const old = SW.emojiHold;
+  function startKeyHold(kb, side, el) {
+    const old = SW.keyHold;
     if (old) {
       clearTimeout(old.timer);
       holdRing(old.el, false);
@@ -2820,17 +2824,20 @@
     h.timer = setTimeout(() => {
       h.done = true;
       holdRing(el, false);
-      openPanel(kb);
-      focusFirst();
+      if (el.getAttribute("data-key") === "Escape") setSetting("privateMode", !settings.privateMode);
+      else {
+        openPanel(kb);
+        focusFirst();
+      }
     }, HOLD_MS);
-    SW.emojiHold = h;
+    SW.keyHold = h;
     holdRing(el, true);
     if (side === "L" || side === "R") setPadDown(kb, side, true);
   }
 
-  function endEmojiHold(kb) {
-    const h = SW.emojiHold;
-    SW.emojiHold = null;
+  function endKeyHold(kb) {
+    const h = SW.keyHold;
+    SW.keyHold = null;
     if (!h) return;
     clearTimeout(h.timer);
     holdRing(h.el, false);
@@ -3068,7 +3075,7 @@
       }
     }
     if (e.detail?.is_repeat) {
-      if (SW.held[side] || SW.sugHold?.side === side || SW.emojiHold?.side === side || SL.s?.side === side) e.stopImmediatePropagation();
+      if (SW.held[side] || SW.sugHold?.side === side || SW.keyHold?.side === side || SL.s?.side === side) e.stopImmediatePropagation();
       return;
     }
     if (!down && SW.sugHold?.side === side) {
@@ -3077,10 +3084,10 @@
       endSugHold(kb);
       return;
     }
-    if (!down && SW.emojiHold?.side === side) {
+    if (!down && SW.keyHold?.side === side) {
       e.stopImmediatePropagation();
       e.preventDefault();
-      endEmojiHold(kb);
+      endKeyHold(kb);
       return;
     }
     try {
@@ -3102,12 +3109,12 @@
           startSugHold(kb, side, sugIdx);
           return;
         }
-        const emojiEl = !SW.held[side] && !SW.emojiHold && hitKey === EMOJI ? hit : null;
-        if (emojiEl) {
+        const privateShortcut = hitKey === "Escape" && layoutSupported() && !ONE_SHOTS.some((k) => active(kb.state?.toggleStates?.[k]));
+        if (!SW.held[side] && !SW.keyHold && (hitKey === EMOJI || privateShortcut)) {
           flushSession(kb);
           e.stopImmediatePropagation();
           e.preventDefault();
-          startEmojiHold(kb, side, emojiEl);
+          startKeyHold(kb, side, hit);
           return;
         }
         if (!SW.held[side] && !SW.closeHold && closesKeyboard(kb, hitKey)) {
@@ -3205,6 +3212,7 @@
     clearTrail(kb);
     injectStyle(doc);
     if (P.el?.ownerDocument !== doc) buildFrame(doc);
+    endPractice();
     P.kb = kb;
     P.open = true;
     P.page = 0;
@@ -3270,6 +3278,7 @@
   }
 
   function closePanel() {
+    endPractice();
     releaseSlider();
     stopRepeat();
     disarm();
@@ -3571,6 +3580,7 @@
     if (id === "clear_log") return addRow(clearLogRow(), pg);
     if (id === "forget_all") return addRow(forgetRow(), pg);
     if (id === "version") return addRow({ el: el("osk-set-version", versionLine()), focus: false }, pg);
+    if (id === "practice") return addRow(actionRow(id, "Two-thumb practice", "Try a split swipe without typing", startPractice), pg);
     if (id === "help") return addRow({ el: helpCard(), focus: false }, pg);
     if (id === "updates") return window.__oskHost?.updates ? addRow(updatesRow(window.__oskHost.updates), pg) : null;
     if (id === "words") {
@@ -3818,6 +3828,88 @@
     }
     paintFoot();
     return true;
+  }
+
+  function startPractice() {
+    const card = el("osk-practice");
+    const title = el("osk-practice-title");
+    const prompt = el("osk-practice-prompt");
+    prompt.setAttribute("role", "status");
+    const exit = keyEl("practice_exit", "osk-practice-exit", "Exit practice (B)");
+    addRow({ key: SET + "practice_exit", el: exit, act: closePanel });
+    const head = el("osk-practice-head");
+    head.append(title, exit);
+    card.append(head, prompt);
+    for (const letters of ["qwertyuiop", "asdfghjkl", "zxcvbnm"]) {
+      const row = el("osk-practice-row");
+      for (const ch of letters) row.appendChild(keyEl("practice_" + ch, "osk-practice-key", ch.toUpperCase()));
+      card.appendChild(row);
+    }
+    P.practice = { card, title, prompt, step: 0, buttons: {} };
+    P.el.classList.add("practicing");
+    P.el.appendChild(card);
+    paintPractice();
+  }
+
+  function endPractice() {
+    if (!P.practice) return;
+    P.el.classList.remove("practicing");
+    P.practice.card.remove();
+    P.rows.delete(SET + "practice_exit");
+    P.practice = null;
+  }
+
+  function paintPractice(retry = false) {
+    const { step, title, prompt, card } = P.practice;
+    const cue = [
+      "Press S with the left pad and slide to W without letting go.",
+      "Hold W with the left pad and press I with the right pad.",
+      "Keep the right pad pressed. Release the left pad.",
+      "Slide the right pad to M and release to finish the word.",
+    ];
+    setText(title, step < 4 ? "Guided word: SWIM" : step < 8 ? "Your turn: DRUM" : "Practice complete");
+    const instruction = step < 4 ? cue[step] : step < 8 ? "Swipe DRUM with both thumbs." : "You swiped two words. Exit practice to type.";
+    setText(prompt, (retry ? "Try again. " : "") + instruction);
+    for (const key of card.querySelectorAll(".osk-practice-key"))
+      key.classList.toggle("cue", step < 4 && ["SW", "WI", "WI", "M"][step].includes(key.textContent));
+  }
+
+  function practiceKey(side) {
+    const pad = side === "L" ? P.kb.m_leftTrackpad : P.kb.m_rightTrackpad;
+    return P.kb.getElementFromPointWorkaround(pad.x, pad.y, side === "L" ? LPAD : RPAD)?.getAttribute?.("data-key");
+  }
+
+  function practiceButton(e, down, button) {
+    const p = P.practice;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    if (e.detail?.is_repeat) return;
+    if (!down) P.held.delete(button);
+    else P.held.add(button);
+    if (down && (button === CANCEL_BTN || (button === OK_BTN && p.step === 8))) return closePanel();
+    const side = padSideFor(P.kb, button) ?? (!down && Object.keys(p.buttons).find((s) => p.buttons[s] === button));
+    if (!down && button === OK_BTN) P.aDown = false;
+    if (!side) return;
+    if (!down && P.padDown[side]) {
+      P.padDown[side] = false;
+      setPadDown(P.kb, side, false);
+    }
+    const key = practiceKey(side);
+    if (down && key === SET + "practice_exit") return closePanel();
+    if (p.step === 8 || (!down && p.buttons[side] !== button)) return;
+    if (down) p.buttons[side] = button;
+    else delete p.buttons[side];
+    const word = p.step < 4 ? "swim" : "drum";
+    const phase = p.step % 4;
+    const prefix = SET + "practice_";
+    let ok;
+    if (phase === 0) ok = down && side === "L" && p.buttons.R === undefined && key === prefix + word[0];
+    if (phase === 1)
+      ok = down && side === "R" && p.buttons.L !== undefined && practiceKey("L") === prefix + word[1] && key === prefix + word[2];
+    if (phase === 2) ok = !down && side === "L" && p.buttons.R !== undefined && key === prefix + word[1];
+    if (phase === 3) ok = !down && side === "R" && key === prefix + word[3];
+    p.step = ok ? p.step + 1 : p.step - phase;
+    paintPractice(!ok);
   }
 
   function helpCard() {
@@ -4273,14 +4365,15 @@
   function onPanelButton(e) {
     const button = e.detail?.button;
     const down = e.type === "vgp_onbuttondown";
+    if (P.practice && PANEL_SWALLOW.has(button)) return practiceButton(e, down, button);
     const src = e.detail?.source;
     const fromGamepad = src === undefined || src === 1 || src === 2;
     if (button === OK_BTN && fromGamepad) {
-      if (!down && SW.emojiHold?.side === "A") {
+      if (!down && SW.keyHold?.side === "A") {
         e.stopImmediatePropagation();
         e.preventDefault();
-        const kb = SW.emojiHold.kb;
-        endEmojiHold(kb);
+        const kb = SW.keyHold.kb;
+        endKeyHold(kb);
         P.aDown = false;
         return;
       }
@@ -4290,8 +4383,8 @@
         if (kb && el.getAttribute("data-key") === EMOJI && kb.m_keyboardDiv?.contains(el)) {
           e.stopImmediatePropagation();
           e.preventDefault();
-          startEmojiHold(kb, "A", el);
-          SW.emojiHold.kb = kb;
+          startKeyHold(kb, "A", el);
+          SW.keyHold.kb = kb;
           return;
         }
       }
@@ -4308,7 +4401,7 @@
     const kb = isPad ? (findKeyboard(e.currentTarget?.document ?? e.target?.ownerDocument) ?? P.kb) : null;
     const side = kb && padSideFor(kb, button);
     if (isPad && (side || !isTrigger)) {
-      if (side && SW.emojiHold?.side === side) return;
+      if (side && SW.keyHold?.side === side) return;
       if (side && !down && P.padDown[side]) {
         P.padDown[side] = false;
         if (P.drag?.side === side) P.drag = null;
@@ -4543,7 +4636,8 @@
 [data-key="Control"],[data-key="Meta"],[data-key="Alt"]{width:6.45% !important}
 [data-key="${EMOJI}"]::after{content:"";position:absolute;top:2px;right:3px;width:18px;height:18px;border-radius:50%;background:${GEAR_LIGHT} no-repeat center/14px,#0e141b;pointer-events:none}
 .osk-gear{display:inline-block;width:1em;height:1em;vertical-align:-.12em;background:${GEAR} no-repeat center/contain}
-[data-key="${EMOJI}"].osk-holding::before{content:"";position:absolute;z-index:3;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;pointer-events:none;background:conic-gradient(#4aa8ff var(--osk-hold),rgba(255,255,255,.18) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));animation:osk-hold ${HOLD_MS}ms linear forwards}
+[data-key="Escape"].osk-holding{position:relative}
+[data-key="Escape"].osk-holding::before,[data-key="${EMOJI}"].osk-holding::before{content:"";position:absolute;z-index:3;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;pointer-events:none;background:conic-gradient(#4aa8ff var(--osk-hold),rgba(255,255,255,.18) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 4px));animation:osk-hold ${HOLD_MS}ms linear forwards}
 @property --osk-hold{syntax:"<percentage>";inherits:false;initial-value:0%}
 @keyframes osk-hold{from{--osk-hold:0%}to{--osk-hold:100%}}
 [data-key=" "].osk-sliding > * > *{opacity:0 !important}
@@ -4644,6 +4738,16 @@
 .osk-set-pv-key{flex:1;display:flex;align-items:center;justify-content:center;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-ka));font-size:9px}
 .osk-set-pv-meta{background:rgba(var(--pv-meta),var(--osk-ma))}
 .osk-set-pv-space{height:6px;border-radius:calc(var(--pv-round) / 2);background:rgba(var(--pv-key),var(--osk-sa))}
+.osk-set.practicing > :not(.osk-practice){display:none !important}
+.osk-practice{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;background:#12151a;padding:8px}
+.osk-practice-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.osk-practice-title{font-size:16px;font-weight:600}
+.osk-practice-exit{padding:7px;background:#28303b;border-radius:4px}
+.osk-practice-prompt{min-height:30px;color:#c6e3ff;font-size:14px}
+.osk-practice-row{display:flex;flex:1;justify-content:center;gap:3px}
+.osk-practice-key{display:grid;place-items:center;width:9.5%;border-radius:4px;background:#29313b;font-size:16px}
+.osk-practice-key.cue{background:#164f80;color:white}
+.osk-practice-key.osk-set-hover,.osk-practice-exit.osk-set-hover{outline:2px solid white;outline-offset:-2px}
 .osk-set-asking > :not(.osk-set-consent){display:none !important}
 .osk-set-consent{display:none}
 .osk-set-asking > .osk-set-consent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:8px 20px;text-align:center}
@@ -5003,6 +5107,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
         "TypeKeyInternal",
         (orig) =>
           function (spec) {
+            if (P.practice && P.kb === this) return;
             const key = spec?.strKey;
             if (!SW.typing) settleFinish();
             if (typeof key !== "string") return orig.call(this, spec);
@@ -5512,13 +5617,13 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     P.held.clear();
     dropHeld(kbs);
     const kb = kbs[0];
-    for (const h of [SW.sugHold, SW.emojiHold, SW.echoHold, SW.touchHold, SW.emojiTouch]) {
+    for (const h of [SW.sugHold, SW.keyHold, SW.echoHold, SW.touchHold, SW.emojiTouch]) {
       if (!h) continue;
       clearTimeout(h.timer);
       if (h.el) holdRing(h.el, false);
       if (kb && (h.side === "L" || h.side === "R")) setPadDown(kb, h.side, false);
     }
-    SW.sugHold = SW.emojiHold = SW.echoHold = SW.touchHold = SW.emojiTouch = null;
+    SW.sugHold = SW.keyHold = SW.echoHold = SW.touchHold = SW.emojiTouch = null;
     dropCloseHold();
   }
 
@@ -5574,7 +5679,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     if (P.open && (!isOpen(P.kb) || !P.el?.isConnected)) closePanel();
     else if (P.open) placePanel();
     try {
-      window.__oskModes?.sync?.(open[0] ?? null, layoutSupported() ? settings.mode : null, modeApi);
+      if (!P.open) window.__oskModes?.sync?.(open[0] ?? null, layoutSupported() ? settings.mode : null, modeApi);
     } catch (e) {
       note(e);
     }
@@ -5772,7 +5877,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     !SL.s &&
     !SW.drawPending &&
     !SW.sugHold &&
-    !SW.emojiHold &&
+    !SW.keyHold &&
     !SW.closeHold &&
     !SW.echoHold &&
     !state.tickSoon &&
@@ -5842,7 +5947,7 @@ ${K} [data-key=" "]:has(> .osk-echo.space:not([hidden])) > .${C.KeyboardKey}{bac
     };
     step(() => window.__oskModes?.sync?.(null, null, modeApi));
     step(() => closePanel());
-    for (const h of [SW.emojiHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold, SW.closeHold]) clearTimeout(h?.timer);
+    for (const h of [SW.keyHold, SW.emojiTouch, SW.sugHold, SW.touchHold, SW.echoHold, SW.closeHold]) clearTimeout(h?.timer);
     clearSlide();
     dropFinish();
     step(() => restoreDismiss());

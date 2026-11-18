@@ -287,6 +287,24 @@ async function updateTests() {
     open1 === true && whileOpen.installs === 0 && /9\.9\.9 will install when the keyboard closes/.test(whileOpen.line),
     JSON.stringify({ open1, ...whileOpen }),
   );
+  await page.evaluate(() => VaporType.setAutoUpdate(false));
+  const cancelled = await waitFor(() => !VaporType.updateLine().includes("when the keyboard closes"), 1500);
+  await page.evaluate(() => {
+    window.__sim.vkm.SetVirtualKeyboardHidden();
+    window.__oskTrackpadFix.tickNow();
+    return window.__cycle;
+  });
+  check(
+    "opting out cancels the queued automatic install before the keyboard closes",
+    !!cancelled && (await page.evaluate(() => window.__installs.length)) === 0,
+  );
+  await page.evaluate(async () => {
+    window.__sim.vkm.SetVirtualKeyboardVisible();
+    window.__oskTrackpadFix.tickNow();
+    await VaporType.setAutoUpdate(true);
+    window.__cycle = VaporType.updateCycle();
+  });
+  await waitFor(() => VaporType.updateLine().includes("when the keyboard closes"), 1500);
   const closedAt = await page.evaluate(() => {
     window.__sim.vkm.SetVirtualKeyboardHidden();
     window.__oskTrackpadFix.tickNow();

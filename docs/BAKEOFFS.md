@@ -30,6 +30,32 @@ ctxWeight 2 (engine v4) gains about a point on sloppy swipes and leaves bench.mj
 higher, but the gain comes from a small corpus written for this project and a wrong previous word costs more as the
 weight grows.
 
+### Short strokes across both pads (engine v12)
+
+When each thumb lands on one letter, the ideal path length on each pad is zero. Two small landing or release
+movements can look much too long: v11 could discard the right candidate on length alone, before comparing its
+positions. V12 adds one key of slack per run to both sides of the length ratio when both pads contribute. The
+endpoint, reach and shape checks still apply; one-pad and touchscreen scoring are unchanged. The final shape pass
+checks at most 80 candidates on two pads (formerly 300); both limits gave the same top-1 and top-3 on tune.
+
+`bench-sentences.mjs`, normal context, fixed candidate before held-out evaluation. Top-1, v11 → v12:
+
+| Two-pad simulation | Tune (660 words) | Held-out (218 words) |
+|---|---:|---:|
+| Clean overlap | 95.6 → 96.4% | 97.2 → 97.7% |
+| Sloppy overlap | 80.8 → 87.6% | 77.5 → 84.9% |
+
+Held-out sloppy top-3 rose from 85.3 to 94.5%. Holding the sloppy profile's aim noise (`SLOPPY.sx` and `.sy`)
+fixed at 0.25, 0.45 and 0.60 key widths/heights gave held-out top-1 of 89.0 → 94.5%, 63.3 → 69.3% and
+39.4 → 44.5%, respectively. Even with context, at 0.60 keys the first choice is wrong more often than right.
+Without context (`bench.mjs`, 570 held-out words), sloppy top-1 rose from 75.8 to 77.5%, but clean top-1 fell
+from 91.4 to 90.9% (three words). Host decode p95 was 24.0 → 28.7 ms sloppy, 26.5 → 25.5 ms clean; these are
+single runs, not Deck timings. Noiseless sequence top-1 was 98.4% (floor 98%).
+
+Local replay (`bench-real.mjs`): both versions ranked 18/23 labeled swipes first and 20/23 in the first three;
+16 deletions had no known intent. Only three labeled swipes used both pads. This replay does not establish a gain
+on hardware.
+
 ## Autocorrect thresholds
 
 Sentence bench, tap part: clean words must never change (false-auto), lazy apostrophes ("dont"), noisy taps

@@ -1,6 +1,6 @@
 import { ButtonItem, Field, Navigation, PanelSection, PanelSectionRow, ToggleField, staticClasses } from "@decky/ui";
 import { definePlugin, toaster } from "@decky/api";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { FaKeyboard } from "react-icons/fa";
 import {
   backendState,
@@ -17,6 +17,7 @@ import {
 import { canInstall, checkForUpdates, installNow, installWithDecky, setAutoUpdate, updateLine, updateStatus } from "./updates";
 
 const WAIT_FOR_KEYBOARD_MS = 20000;
+let forgetPending = false;
 
 function useTick(ms: number) {
   const [, setN] = useState(0);
@@ -32,7 +33,11 @@ function Content() {
   const f = fix();
   const running = !!f && !f.stopped;
   const [confirmForget, setConfirmForget] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (!confirmForget) return;
+    const timer = setTimeout(() => setConfirmForget(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmForget]);
   const install = st?.install;
   const pluginLine = `Plugin ${install?.plugin ?? "?"} · Decky ${install?.decky ?? "?"}`;
   const status = f ? f.status() : st?.enabled === false ? "off" : "loading";
@@ -44,15 +49,15 @@ function Content() {
   const updateAction = () => void (decky ? installWithDecky() : canInstall() ? installNow() : checkForUpdates(true));
 
   const forget = async () => {
+    if (forgetPending) return;
     if (!confirmForget) {
       setConfirmForget(true);
-      clearTimeout(confirmTimer.current);
-      confirmTimer.current = setTimeout(() => setConfirmForget(false), 4000);
       return;
     }
-    clearTimeout(confirmTimer.current);
+    forgetPending = true;
     setConfirmForget(false);
     const ok = await forgetEverything().catch(() => false);
+    forgetPending = false;
     toaster.toast({
       title: "VaporType",
       body: ok ? "Learned words, blocked words and the typing log were deleted." : "Some data could not be deleted. Try again.",
@@ -70,12 +75,16 @@ function Content() {
     <>
       <PanelSection>
         <PanelSectionRow>
-          <ToggleField
-            label="Enabled"
-            description="Off restores Steam's own keyboard."
-            checked={st?.enabled !== false}
-            onChange={(on) => void setEnabled(on)}
-          />
+          {st ? (
+            <ToggleField
+              label="Enabled"
+              description="Off restores Steam's own keyboard."
+              checked={st.enabled}
+              onChange={(on) => void setEnabled(on)}
+            />
+          ) : (
+            <Field label="Enabled" description="Loading keyboard settings…" />
+          )}
         </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem layout="below" disabled={!running} onClick={openSettings}>
@@ -86,6 +95,15 @@ function Content() {
       <PanelSection title="Privacy">
         <PanelSectionRow>
           <ToggleField
+            label="Private mode"
+            description="Pauses learning, autocorrect, the typing log and the typed-text line. You can also hold Esc with a trackpad."
+            checked={settingsValue("privateMode") === true}
+            disabled={!running}
+            onChange={(on) => setSetting("privateMode", on)}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
             label="Keep typing log"
             description="Saves the words you type, with swipe paths and taps, to a file on this Deck so you can share it to help tuning. Nothing is sent anywhere."
             checked={settingsValue("typingLog") === true}
@@ -94,8 +112,8 @@ function Content() {
           />
         </PanelSectionRow>
         <PanelSectionRow>
-          <ButtonItem layout="below" onClick={forget}>
-            {confirmForget ? "Press again to forget everything" : "Forget everything"}
+          <ButtonItem layout="below" disabled={forgetPending} onClick={forget}>
+            {forgetPending ? "Deleting typing data…" : confirmForget ? "Press again to forget everything" : "Forget everything"}
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
@@ -109,12 +127,16 @@ function Content() {
           </ButtonItem>
         </PanelSectionRow>
         <PanelSectionRow>
-          <ToggleField
-            label="Install updates automatically"
-            description="When the keyboard is closed."
-            checked={upd?.autoUpdate !== false}
-            onChange={(on) => void setAutoUpdate(on)}
-          />
+          {upd ? (
+            <ToggleField
+              label="Install updates automatically"
+              description="When the keyboard is closed."
+              checked={upd.autoUpdate}
+              onChange={(on) => void setAutoUpdate(on)}
+            />
+          ) : (
+            <Field label="Install updates automatically" description="Waiting for update status…" />
+          )}
         </PanelSectionRow>
       </PanelSection>
       <PanelSection title="Status">

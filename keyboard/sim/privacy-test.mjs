@@ -79,6 +79,50 @@ function helpers(page) {
   return { F, kbEval, center, vgp, tap, word, stroke, text, clear, user, set, padAt, padIdle };
 }
 
+async function privatePadShortcut() {
+  const { page } = await fresh();
+  const h = helpers(page);
+  await h.set("suggestions", false);
+  await settle(page);
+  const pressEsc = async (holdMs) => {
+    const c = await h.center("Escape");
+    await h.padAt("L", c.x, c.y);
+    await h.vgp("vgp_onbuttondown", 20);
+    await sleep(holdMs);
+    await h.vgp("vgp_onbuttonup", 20);
+    await h.padIdle("L");
+    await settle(page);
+  };
+  const snapshot = () =>
+    h.F(() => ({
+      privateMode: JSON.parse(localStorage.getItem("oskSwipeSettings")).privateMode,
+      echo: window.__oskTrackpadFix.effective("echo"),
+      panel: window.__oskTrackpadFix.panel.open,
+      sent: window.__keyLog.filter(([, kind, key]) => kind === "text" || key === 41).map(([, kind]) => kind),
+    }));
+  await pressEsc(650);
+  const on = await snapshot();
+  await pressEsc(650);
+  const off = await snapshot();
+  await pressEsc(15);
+  const tap = await snapshot();
+  check(
+    on.privateMode &&
+      !on.echo &&
+      !on.panel &&
+      !on.sent.length &&
+      !off.privateMode &&
+      !off.echo &&
+      !off.panel &&
+      !off.sent.length &&
+      !tap.privateMode &&
+      tap.sent.join() === "down,up",
+    "pad hold on Esc toggles Private mode before typing with echo and suggestions off; a tap sends only Escape",
+    { on, off, tap },
+  );
+  await page.close();
+}
+
 async function privateBoundary() {
   const { page } = await fresh();
   const h = helpers(page);
@@ -691,6 +735,7 @@ async function geoOnClose() {
 }
 
 const blocks = [
+  privatePadShortcut,
   privateBoundary,
   enterEnded,
   enterLine,

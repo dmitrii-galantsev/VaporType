@@ -26,8 +26,9 @@ Needs [Decky Loader](https://decky.xyz/) 3.0 or newer.
 
 VaporType checks GitHub releases about twice a day and installs a new version on its own once the keyboard is closed;
 one short notice says when it did. Quick Access → VaporType → Updates checks now, installs now, or turns automatic
-updates off. The check only asks GitHub for the latest release; nothing else is sent. A release that changes how
-Decky loads the plugin is offered as "Update with Decky…", which asks before installing. Installing the same URL again
+updates off. Turning them off cancels an automatic update waiting for the keyboard to close; you can still install it
+manually. The check only asks GitHub for the latest release; nothing else is sent. Compatible keyboard updates switch to the new files only after all of them are on disk. A release that changes the
+backend or how Decky loads the plugin is offered as "Update with Decky…", which asks before installing. Installing the same URL again
 also updates. Learned words and settings are kept.
 
 An update is whatever is published as a release of github.com/dmitrii-galantsev/VaporType, downloaded over HTTPS; the
@@ -56,6 +57,9 @@ types the word and puts a space between it and the word before.
 A word with letters on both halves uses both pads: keep the first pad pressed while the other pad clicks or slides
 over its letters. The word ends when neither pad is pressed. In the clip above, the right pad holds H, the left pad
 clicks E, and the right pad slides on to L and O.
+
+To try the handoff without typing into the active app, hold the emoji key and open **System → Two-thumb practice**.
+The first word shows when to switch thumbs; the second lets you try without hints. Press B to exit.
 
 Backspace right after a swipe deletes the whole word. Swiping also works with a finger on the touchscreen.
 
@@ -116,7 +120,9 @@ new words in Settings. Show typed text, which shows what you type above the keys
 - Learned words are kept in `~/homebrew/settings/vaportype/` and in Steam's local storage. Settings → Words lists
   them; tap one to forget it.
 - VaporType can't tell a password field from any other field. Turn on **Private mode** before typing a password
-  (Settings → System, or hold the typed-text line): no learning, no autocorrect, no typed text, no log.
+  to pause learning, autocorrect, the typed-text line and the log. Hold **Esc** with a trackpad to toggle it, even
+  with Show typed text off. The same switch is in Quick Access → VaporType → Privacy and keyboard Settings → System.
+  With the typed-text line in the suggestion row, you can also touch and hold it.
 - The typing log is off unless you turn it on (`~/homebrew/data/vaportype/typing-log.jsonl`).
 - **Forget everything** (keyboard settings, or Quick Access → VaporType) deletes learned and blocked words, their
   backups and the log.

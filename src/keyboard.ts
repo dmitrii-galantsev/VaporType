@@ -1,7 +1,7 @@
 import { callable } from "@decky/api";
 import { startUpdates, stopUpdates } from "./updates";
 
-export { canInstall, checkForUpdates, installNow, showUpdateRecord, updateCycle, updateLine } from "./updates";
+export { canInstall, checkForUpdates, installNow, setAutoUpdate, showUpdateRecord, updateCycle, updateLine } from "./updates";
 
 export type Install = { date: string | null; via: string; decky: string; plugin?: string | null };
 

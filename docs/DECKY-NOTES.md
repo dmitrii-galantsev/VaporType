@@ -92,16 +92,18 @@ bundle (Decky ships certifi): with Python's default context the Deck's plugin pr
 `install_update(version, auto)` downloads `VaporType.zip` and its `.sha256` (zip at most 32 MB), checks the hash and
 reads the zip in memory: exactly one top folder whose `plugin.json` names VaporType, no absolute, backslash or link
 entries and no empty, `.` or `..` path segment, a `package.json` with the requested version, and a `main.py` that
-compiles (otherwise the update is refused and recorded as failed). If its `plugin.json` differs from the installed one
-in anything but `publish`, it has a top-level file or folder the installed copy lacks, or it has files in a folder
-other than `dist/`, it changes nothing and returns `needsDecky` with the GitHub Pages URL and the release's hash
-(Decky's own downloader cannot follow GitHub's release redirect); the Quick Access button "Update with Decky…" then
-calls `utilities/install_plugin` with install type 2 (`UPDATE`) and Decky asks before installing. Shortly after a
-release, while Pages is still deploying, Pages may serve the previous zip and Decky rejects it as a hash mismatch
-(Decky only logs that); trying again later works. Otherwise it keeps the current `dist/` and top-level files in
-memory, writes each `dist/` file through a temp file and a rename, removes `dist/` files the new zip lacks, rewrites
-the other top-level files in place (never `plugin.json`) and `main.py` last. Any error puts every kept file back and is
-reported in the status line; it is not retried automatically for 12 h.
+compiles (otherwise the update is refused and recorded as failed). Changes to the backend or loader metadata, new package files, and other changes outside the frontend that
+cannot be activated safely return `needsDecky` without touching the installed files. Quick Access → Update with Decky
+passes the GitHub Pages URL and verified release hash to Decky for confirmation. While Pages is deploying, it may
+still serve the previous zip; retry later if Decky rejects the hash.
+
+For a compatible update, the backend writes the entire frontend under `dist/vt-<version>-<digest>/` and syncs it
+before atomically replacing `dist/index.js` with its module entry point. Keyboard assets load relative to that module.
+An interruption before the switch leaves the old frontend active; after the switch the complete new one is active.
+A later update removes older payloads but retains the previous active version. The package version shown by Decky
+remains the last full install; VaporType also shows the active frontend version. Backend code is never rewritten by
+this path. Install the first build that changes from the old updater using Decky or the documented backed-up local
+deploy procedure: an existing installation still uses its old updater until the new backend is loaded.
 Success records `updated: {from, to, at, auto}`, which the new version reads once (`take_update_record`) and turns into
 one toast when the update was automatic.
 
@@ -109,10 +111,8 @@ The frontend installs automatically only when `autoUpdate` is on, the update nee
 closed (`keyboardOpen()`, polled every 5 s); it saves words and the typing log first (`syncNow`), installs, waits again
 if the keyboard opened meanwhile (the old version keeps running), then calls `loader/reload_plugin` through
 `DeckyBackend`, which stops the old backend and frontend and imports the new ones. A manual install from either panel
-waits for a closed keyboard the same way. The installed date in the version line is `package.json`'s, which every update
-rewrites. Checks and installs use their own backend lock and do not go through the save queue. A rewrite of `main.py`
-that is cut off (power loss mid-write) would leave the backend unloadable until reinstalled; the file is written in one
-call and synced, as the last step.
+waits for a closed keyboard the same way. The install date follows the active frontend entry. Checks and installs use their own backend lock and do not go
+through the save queue.
 
 Trust: an update is whatever is published as a release of github.com/dmitrii-galantsev/VaporType, downloaded over
 HTTPS. The `.sha256` beside it catches a damaged download; it is not a signature, so anyone who can publish a release

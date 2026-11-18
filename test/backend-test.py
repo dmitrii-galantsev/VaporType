@@ -6,11 +6,13 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 import zipfile
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 work = tempfile.mkdtemp(prefix="vaportype-backend-")
@@ -317,6 +319,32 @@ def state_of(root):
     return out
 
 
+def interrupt_install(root, srv, point):
+    script = """
+import os, sys
+import main
+root, url, point = sys.argv[1:]
+main.plugin_dir = lambda: root
+replace = os.replace
+fsync = os.fsync
+
+def stop_at_replace(src, dst):
+    if point == 'before': os._exit(73)
+    replace(src, dst)
+    if point == 'after': os._exit(73)
+
+def stop_at_fsync(fd):
+    if point == 'writing' and os.path.isfile(f"/proc/self/fd/{fd}"): os._exit(73)
+    fsync(fd)
+
+os.replace = stop_at_replace
+os.fsync = stop_at_fsync
+main.Plugin()._install('0.3.1', url + '/zip', url + '/sha')
+"""
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join((os.path.join(here, "fake_decky"), ROOT))}
+    return subprocess.run([sys.executable, "-B", "-c", script, root, srv.base, point], cwd=ROOT, env=env, timeout=20).returncode
+
+
 async def updates():
     srv = Server()
     os.environ["VAPORTYPE_UPDATE_API"] = srv.base + "/api"
@@ -426,70 +454,101 @@ async def updates():
         [s6d["error"], r4d],
     )
 
-    real = main.write_in_place
-
-    def failing(path, data):
-        if path.endswith("main.py"):
-            raise PermissionError(13, "Permission denied", path)
-        return real(path, data)
-
-    attempt(zip_of(package_tree("0.3.1")))
-    main.write_in_place = failing
-    try:
-        r5 = await install()
-    finally:
-        main.write_in_place = real
-    s7 = await p.get_update_status()
+    await p.set_auto_update(False)
+    hits = len(srv.hits)
+    cancelled = await p.install_update("0.3.1", auto=True)
     check(
-        "update: a failure while applying restores every file and is shown in the status",
-        not r5["ok"] and "undone" in r5["error"] and state_of(root) == before and s7["failed"]["version"] == "0.3.1",
-        r5,
+        "update: an opted-out automatic install makes no download or file changes",
+        cancelled.get("cancelled") and not cancelled["ok"] and len(srv.hits) == hits and state_of(root) == before,
+        cancelled,
     )
-
-    new = package_tree("0.3.1", "\nUPDATED = True\n")
-    meta = json.loads(new["plugin.json"])
-    meta["publish"] = {**meta.get("publish", {}), "description": "changed"}
-    new["plugin.json"] = json.dumps(meta).encode()
-    new.pop("dist/keyboard/patch.js", None)
-    attempt(zip_of(new))
-    top_before = {n: os.stat(os.path.join(root, n)).st_ino for n in os.listdir(root)}
+    await p.set_auto_update(True)
     os.chmod(root, 0o555)
     try:
-        r6 = await install()
+        for name in ("main.py", "package.json"):
+            tree = package_tree("0.3.1")
+            if name == "main.py":
+                tree[name] += b"\nUPDATED = True\n"
+            else:
+                tree[name] = json.dumps({**json.loads(tree[name]), "type": "commonjs"}).encode()
+            zdata = zip_of(tree)
+            attempt(zdata)
+            result = await install()
+            handoff = (await main.Plugin().get_update_status())["needsDecky"] or {}
+            check(
+                f"update: changed {name} goes to Decky before any plugin file changes",
+                result.get("needsDecky")
+                and handoff.get("url") == main.PAGES_ZIP
+                and handoff.get("sha256") == hashlib.sha256(zdata).hexdigest()
+                and state_of(root) == before,
+                result,
+            )
+        tree = package_tree("0.3.1")
+        tree["dist/index.js"] = b'export default new URL("keyboard/patch.js", import.meta.url);'
+        tree["dist/keyboard/patch.js"] = b"new release asset"
+        tree["test-record.json"] = b"{}"
+        attempt(zip_of(tree))
+        for point in ("writing", "before", "after"):
+            code = interrupt_install(root, srv, point)
+            installed_tree = state_of(root)
+            check(
+                f"update: abrupt exit {point} the switch leaves the loader files and old assets intact",
+                code == 73 and all(installed_tree.get(rel) == data for rel, data in before.items() if rel != "dist/index.js"),
+                code,
+            )
+            current = (await main.Plugin().get_update_status())["current"]
+            if point != "after":
+                check(
+                    f"update: restart after {point} still loads the old entry",
+                    current == "0.3.0" and installed_tree["dist/index.js"] == before["dist/index.js"],
+                )
+            else:
+                check("update: restart after the switch sees the new version without a settings write", current == "0.3.1")
+        entry = Path(root, "dist/index.js").as_uri()
+        js = 'import {readFileSync} from "node:fs"; console.log(readFileSync((await import(process.argv[1])).default, "utf8"));'
+        loaded = subprocess.run(["node", "--input-type=module", "-e", js, entry + "?reload=1"], capture_output=True, timeout=15)
+        check(
+            "update: the switched ES module resolves its own immutable keyboard asset",
+            loaded.stdout.strip() == tree["dist/keyboard/patch.js"],
+            loaded.stderr,
+        )
+        newer = package_tree("0.3.2")
+        srv.release("0.3.2", zip_of(newer))
+        await p.check_update(True)
+        result = await p.install_update("0.3.2", auto=True)
+        status = await main.Plugin().get_update_status()
+        record = await p.take_update_record()
+        check(
+            "update: the next automatic update advances the frontend, not Decky's manifest",
+            result["ok"]
+            and status["current"] == "0.3.2"
+            and status["packageVersion"] == "0.3.0"
+            and not status["available"]
+            and (await p.load_state())["install"]["plugin"] == "0.3.2",
+            status,
+        )
+        check(
+            "update: successful auto install is recorded just once",
+            record and record["auto"] and record["from"] == "0.3.1" and await p.take_update_record() is None,
+            record,
+        )
+        tree = package_tree("0.3.3")
+        dist = Path(root, "dist")
+        results = await asyncio.gather(
+            *(asyncio.to_thread(main.activate_frontend, dist, tree, "0.3.3", "f" * 64) for _ in range(2)), return_exceptions=True
+        )
+        check(
+            "update: competing writers commit once and recheck the active version under the lock",
+            results.count(None) == 1
+            and any(isinstance(r, ValueError) and "not newer" in str(r) for r in results)
+            and main.installed_version() == "0.3.3",
+            results,
+        )
     finally:
         os.chmod(root, 0o755)
-    after = state_of(root)
-    top_after = {n: os.stat(os.path.join(root, n)).st_ino for n in os.listdir(root)}
-    check(
-        "update: a publish-only plugin.json change is applied in place with the folder read-only",
-        r6["ok"] is True and top_after == top_before,
-        r6,
-    )
-    check(
-        "update: dist and main.py are replaced, stale dist files removed, plugin.json kept",
-        after.get("main.py") == new["main.py"]
-        and after.get("dist/index.js") == new["dist/index.js"]
-        and "dist/keyboard/stale.js" not in after
-        and after["plugin.json"] == before["plugin.json"]
-        and json.loads(after["package.json"])["version"] == "0.3.1"
-        and all(after.get(rel) == data for rel, data in new.items() if rel != "plugin.json"),
-        sorted(set(after) ^ set(new)),
-    )
     os.utime(os.path.join(root, "plugin.json"), (0, 0))
-    os.chmod(root, 0o755)
     installed = (await p.load_state())["install"]
-    check(
-        "update: the install date follows package.json, which every update rewrites",
-        installed["date"] == time.strftime("%Y-%m-%d"),
-        installed,
-    )
-    s8 = await p.get_update_status()
-    check("update: after the update it is up to date", s8["current"] == "0.3.1" and not s8["available"] and not s8["failed"], s8)
-    rec1 = await main.Plugin().take_update_record()
-    rec2 = await main.Plugin().take_update_record()
-    check(
-        "update: the record of the update is read once", rec1 and rec1["from"] == "0.3.0" and rec1["to"] == "0.3.1" and rec2 is None, rec1
-    )
+    check("update: the install date follows frontend activation", installed["date"] == time.strftime("%Y-%m-%d"), installed)
     auto = await main.Plugin().set_auto_update(False)
     check(
         "update: automatic updates can be turned off and the choice is kept",

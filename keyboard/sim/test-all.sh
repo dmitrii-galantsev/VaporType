@@ -12,7 +12,13 @@ run() {
   local name=$1 dir=$2; shift 2
   wanted "$name" || return 0
   while [ "$(jobs -rp | wc -l)" -ge "$limit" ]; do wait -n; done
-  ( t0=$(date +%s.%N); cd "$root/$dir" && env "$@" > "$out/$name.log" 2>&1; c=$?; echo "secs $(echo "$(date +%s.%N) - $t0" | bc)" >> "$out/$name.log"; echo "exit $c" >> "$out/$name.log" ) &
+  (
+    t0=$(date +%s%N)
+    cd "$root/$dir" && env "$@"
+    c=$?
+    LC_ALL=C awk -v ns="$(( $(date +%s%N) - t0 ))" 'BEGIN { printf "secs %.9f\n", ns / 1e9 }'
+    echo "exit $c"
+  ) > "$out/$name.log" 2>&1 &
   jobs+=("$name")
 }
 first=(twopad-test settings-test)
@@ -42,7 +48,14 @@ for n in "${jobs[@]}"; do
   if [ "$code" = 0 ] && [ "$f" = 0 ]; then s=ok; else s=FAIL; fail=1; fi
   t=$(sed -n 's/^secs //p' "$log" | tail -1)
   printf '%-18s %-4s pass %-3s fail %-3s %6.1f s\n' "$n" "$s" "$p" "$f" "${t:-0}"
-  [ "$s" = FAIL ] && grep -m 8 -E '^FAIL|Error' "$log" | sed 's/^/    /'
+  if [ "$s" = FAIL ]; then
+    case "$code" in
+      0) ;;
+      124) printf '    timeout (exit 124); log: %s\n' "$log" ;;
+      *) printf '    exit %s; log: %s\n' "${code:-unknown}" "$log" ;;
+    esac
+    grep -m 8 -E '^FAIL|Error' "$log" | sed 's/^/    /'
+  fi
 done
 echo "logs: $out  wall: $((SECONDS - start)) s"
 exit $fail

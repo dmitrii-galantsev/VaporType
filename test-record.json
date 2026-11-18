@@ -1,6 +1,6 @@
 {
-  "tested": "2026-11-16T23:24:21.567Z",
-  "keyboard": 42,
+  "tested": "2026-11-18T08:05:18.129Z",
+  "keyboard": 43,
   "tests": [
     "keyboard/sim/test-all.sh (simulator suites and engine gates)",
     "test/backend-test.py",
@@ -9,26 +9,26 @@
   "files": {
     "plugin.json": "05c6edd378d5b4bee231a69c331b7e8da2365ff2b7c5ea8fb145513a98cffcbc",
     "package.json": "a187b378a27f7ab090eb21b7f292d51b654c00e7d66d1f3537483eb306bf0d2e",
-    "main.py": "135842fcf930e7a420a597f6f68e274237724d786e868c71f4dc5f82e1ad1c02",
+    "main.py": "8081020111b04f6e58e315a3847b5ba83a7d81528b8c51e3d3094b014944ea36",
     "LICENSE": "5a7445d47bb56558a68eeaa97951332d4e0a0af39b9242ef92d77f7be1835718",
-    "README.md": "8b8e0001e95eb5f2dae6abda9f13939ff543dedba15061fff5e032677fca722e",
-    "dist/index.js": "df50278dbc609b8dddd1059d9236316ec2c9ecb0a4b649fb5eb2cc412cd96845",
-    "dist/index.js.map": "82c35ce825780e3fbf61ee23e3c1d5a661ce1ffc9415a8dedce2884e128c5d10",
-    "dist/keyboard/manifest.json": "b18c9bee1e6a062afb07b96998d78290fbfcf4cc3f4d0a6904e03e0ea988f980",
-    "dist/keyboard/patch.js": "0832079dd9afb64b7c7835593e7e1a555f7118f9bfc6c53735a240ba23dfe4ad",
+    "README.md": "532379ef0698c45c8ae3db25075dd370d157decf9777d7903414c4f449e01d31",
+    "dist/index.js": "cd7b418416fd46a6d925bcfba4bf32c0af66c095b3de23c685fd9259abe6d725",
+    "dist/index.js.map": "e5b5934b0cc8efabc4006bd3cc854dda3581e79c3e610c6648a72807dbdca3e0",
+    "dist/keyboard/manifest.json": "b1ce7c5579969446a76e1390e36bb6326b1137413a2e2219b8482767576277a0",
+    "dist/keyboard/patch.js": "f4fab429e48b0c350b281e72d2e5c77a9c391ce27154b446ca1acfae9b8b59f3",
     "dist/keyboard/modes.js": "00cc3aabcd61606aa6db6772e67a9a6eca6f3f2a8c6a2e6e814a5d8117fc45a2",
-    "dist/keyboard/swipe/engine.js": "8b8a77cc97846efcbe5722acbb4742995171cd88a0c30a5edf28695aaea826ba",
+    "dist/keyboard/swipe/engine.js": "5b43d3ca869d9996061e09a072bf01f6f2c0bd158bc79c81b1c3e875b6315cba",
     "dist/keyboard/swipe/words.js": "25a85c2290bd830e296f80fe2bf3b06a26f3aafdd8736b11e1d7eb2c77a4203c",
     "dist/keyboard/swipe/lm.js": "29c4f830350c39c93fc6f25f522041f91630a478ccf86aadb744c196722436f6",
     "dist/keyboard/swipe/DATA-LICENSES.md": "b4bd77888040ca1844cf7d9b2521c60c85734e93bf4a2d0278353c73814a5d27",
-    "keyboard/src/patch.js": "0832079dd9afb64b7c7835593e7e1a555f7118f9bfc6c53735a240ba23dfe4ad",
+    "keyboard/src/patch.js": "f4fab429e48b0c350b281e72d2e5c77a9c391ce27154b446ca1acfae9b8b59f3",
     "keyboard/src/modes.js": "00cc3aabcd61606aa6db6772e67a9a6eca6f3f2a8c6a2e6e814a5d8117fc45a2",
-    "keyboard/src/engine.js": "8b8a77cc97846efcbe5722acbb4742995171cd88a0c30a5edf28695aaea826ba",
+    "keyboard/src/engine.js": "5b43d3ca869d9996061e09a072bf01f6f2c0bd158bc79c81b1c3e875b6315cba",
     "keyboard/data/words.js": "25a85c2290bd830e296f80fe2bf3b06a26f3aafdd8736b11e1d7eb2c77a4203c",
     "keyboard/data/lm.js": "29c4f830350c39c93fc6f25f522041f91630a478ccf86aadb744c196722436f6",
     "keyboard/data/DATA-LICENSES.md": "b4bd77888040ca1844cf7d9b2521c60c85734e93bf4a2d0278353c73814a5d27",
-    "src/keyboard.ts": "40d79041a3b8efda0d950773e522305f438ddb2605eb203aff30d9866645ecdf",
-    "src/updates.ts": "4901e826f2390b6ed529969914ecad26c4eac11ead7c435f487f73507a24104d",
-    "src/index.tsx": "d164697c4c9be62bf71f173131963474ec8ecd673589f8dfc604ebc90e1b087d"
+    "src/keyboard.ts": "e93081ca08e70a288834a7c846ff22f6de824ed8e5475fb15f0d467614405261",
+    "src/updates.ts": "c9b606f238a3005b17cbe41ff73b041b8687916efa0c4e3654016b7df77c8e98",
+    "src/index.tsx": "24483ceb551788ed53b930e77823d05a815196a4d8d946fe53c324421a74d815"
   }
 }

@@ -2,6 +2,7 @@ import { callable, toaster } from "@decky/api";
 
 export type UpdateStatus = {
   current: string | null;
+  packageVersion?: string | null;
   latest: string | null;
   available: boolean;
   htmlUrl: string | null;
@@ -11,7 +12,7 @@ export type UpdateStatus = {
   failed: { version: string; error: string; at: number } | null;
   autoUpdate: boolean;
 };
-type InstallResult = { ok: boolean; error?: string; needsDecky?: boolean };
+type InstallResult = { ok: boolean; error?: string; needsDecky?: boolean; cancelled?: boolean };
 type UpdateRecord = { from: string | null; to: string; at: number; auto: boolean } | null;
 type Deps = { keyboardOpen: () => boolean; save: () => Promise<void> };
 type DeckyRouter = { call: (route: string, ...args: unknown[]) => Promise<unknown> };
@@ -42,11 +43,11 @@ const w = window as unknown as HostWindow;
 let deps: Deps | null = null;
 let status: UpdateStatus | null = null;
 let busy: "checking" | "installing" | null = null;
-let waiting = false;
+let waiting: "auto" | "manual" | null = null;
 let reloadPending = false;
 let note: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
-let waitTimer: ReturnType<typeof setTimeout> | null = null;
+let cancelWait: (() => void) | null = null;
 let running = false;
 const message = (e: unknown) => String((e as Error)?.message ?? e);
 
@@ -68,7 +69,10 @@ export function canInstall(): boolean {
 }
 
 export function updateLine(): string {
-  const cur = status?.current ?? "?";
+  const cur =
+    status?.packageVersion && status.packageVersion !== status.current
+      ? `Frontend ${status.current} (Decky package ${status.packageVersion})`
+      : (status?.current ?? "?");
   const latest = status?.latest ?? "";
   if (reloadPending) return `${latest} installed · finishes when the keyboard closes`;
   if (busy === "installing") return `Installing ${latest}…`;
@@ -121,14 +125,17 @@ function keyboardOpen(): boolean {
 
 function untilClosed(): Promise<boolean> {
   return new Promise((resolve) => {
-    const poll = () => {
-      waitTimer = null;
-      if (!running) return resolve(false);
-      if (!keyboardOpen()) return resolve(true);
-      waitTimer = setTimeout(poll, CLOSED_POLL_MS);
+    const finish = (closed: boolean) => {
+      clearTimeout(t);
+      cancelWait = null;
+      resolve(closed);
     };
-    if (waitTimer) clearTimeout(waitTimer);
-    waitTimer = setTimeout(poll, CLOSED_POLL_MS);
+    const poll = () => {
+      if (!running || !keyboardOpen()) return finish(running);
+      t = setTimeout(poll, CLOSED_POLL_MS);
+    };
+    let t = setTimeout(poll, CLOSED_POLL_MS);
+    cancelWait = () => finish(false);
   });
 }
 
@@ -139,6 +146,7 @@ async function apply(auto: boolean): Promise<void> {
   note = null;
   try {
     await deps.save();
+    if (!running || (auto && !wantsAuto())) return;
     const r = await installUpdate(version, auto);
     if (r.ok) {
       if (keyboardOpen()) {
@@ -150,7 +158,7 @@ async function apply(auto: boolean): Promise<void> {
       await reload();
       return;
     }
-    if (!r.needsDecky) note = `update failed: ${r.error ?? "unknown error"}`;
+    if (!r.needsDecky && !r.cancelled) note = `update failed: ${r.error ?? "unknown error"}`;
   } catch (e) {
     note = `update failed: ${message(e)}`;
   } finally {
@@ -166,9 +174,9 @@ async function apply(auto: boolean): Promise<void> {
 async function whenClosed(auto: boolean): Promise<void> {
   if (!running || !deps) return;
   if (keyboardOpen()) {
-    waiting = true;
+    waiting = auto ? "auto" : "manual";
     const closed = await untilClosed();
-    waiting = false;
+    waiting = null;
     if (!closed) return;
   }
   await apply(auto);
@@ -195,6 +203,7 @@ export async function setAutoUpdate(on: boolean): Promise<void> {
   try {
     const v = await setAutoUpdateBackend(on);
     if (status) status.autoUpdate = v;
+    if (!v && waiting === "auto") cancelWait?.();
   } catch (e) {
     note = `could not save the setting: ${message(e)}`;
   }
@@ -249,10 +258,10 @@ export function startUpdates(d: Deps): void {
 
 export function stopUpdates(): void {
   running = false;
-  waiting = false;
+  waiting = null;
   reloadPending = false;
   if (timer) clearTimeout(timer);
-  if (waitTimer) clearTimeout(waitTimer);
-  timer = waitTimer = null;
+  cancelWait?.();
+  timer = null;
   if (w.__oskHost) delete w.__oskHost.updates;
 }

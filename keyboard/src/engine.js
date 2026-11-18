@@ -1,5 +1,5 @@
 (function (root) {
-  const VERSION = 11;
+  const VERSION = 12;
   const DEFAULTS = {
     samples: 40,
     band: 0.15,
@@ -868,6 +868,8 @@
       const first = runs[0].start,
         last = runs[runs.length - 1].end;
       const ulen = sides.reduce((a, sd) => a + sd.len, 0);
+      const twoPads = sides.length === 2 && sides.every((sd) => sd.pad !== "T");
+      const lengthSlack = twoPads ? runs.length : 0.5;
       const extra = ulen < opt.shortLen ? opt.shortExtraKeys : 0;
       const s = nearKeys(g, first, opt.startKeys + extra);
       const f = nearKeys(g, last, opt.endKeys + extra);
@@ -906,7 +908,7 @@
               tun += visitCost(g, q, sides[i].coarse, 16, vbuf);
             }
             if (bad) continue;
-            const ratio = (tl + 0.5) / (ulen + 0.5);
+            const ratio = (tl + lengthSlack) / (ulen + lengthSlack);
             if (!ctx.unbounded && (ratio < opt.lengthRatio[0] || ratio > opt.lengthRatio[1])) continue;
             const lr = Math.log(ratio);
             const prior = logPrior(e, prev);
@@ -918,7 +920,8 @@
       const iS = 1 / (2 * opt.sigma ** 2),
         iSh = 1 / (2 * opt.shapeSigma ** 2);
       const out = [];
-      for (let ci = 0; ci < rough.length && ci < opt.maxCandidates; ci++) {
+      const limit = twoPads ? Math.min(opt.maxCandidates, 80) : opt.maxCandidates;
+      for (let ci = 0; ci < rough.length && ci < limit; ci++) {
         const { e, parts, prior } = rough[ci];
         let loc = 0,
           shp = 0,

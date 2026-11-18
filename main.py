@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import hashlib
 import io
 import json
@@ -9,6 +10,7 @@ import ssl
 import time
 import urllib.request
 import zipfile
+from pathlib import Path
 
 import decky
 
@@ -87,8 +89,27 @@ def version_tuple(v):
     return tuple(int(x) for x in m.groups()) if m else None
 
 
-def installed_version():
+PAYLOAD = r"vt-([0-9]+\.[0-9]+\.[0-9]+)-[a-f0-9]{64}"
+
+
+def frontend_version(strict=False):
+    try:
+        with open(os.path.join(plugin_dir(), "dist", "index.js"), "rb") as f:
+            first = f.readline(256).decode("ascii", "replace")
+    except OSError:
+        if strict:
+            raise
+        return None
+    m = re.fullmatch(r'const bundle = new URL\("\./' + PAYLOAD + r'/index\.js", import\.meta\.url\);\n', first)
+    return m[1] if m else None
+
+
+def package_version():
     return (read_json(os.path.join(plugin_dir(), "package.json")) or {}).get("version")
+
+
+def installed_version():
+    return frontend_version() or package_version()
 
 
 def tls_context():
@@ -157,97 +178,82 @@ def zip_tree(data, version):
 
 
 def needs_decky(tree, root):
-    old = read_json(os.path.join(root, "plugin.json")) or {}
-    new = json.loads(tree["plugin.json"])
-    if {k: v for k, v in old.items() if k != "publish"} != {k: v for k, v in new.items() if k != "publish"}:
-        return "plugin.json changed"
-    for rel in tree:
-        first = rel.split("/", 1)[0]
-        if "/" in rel and first != "dist":
-            return f"new files in {first}"
-        path = os.path.join(root, first)
-        if "/" in rel and not os.path.isdir(path):
-            return f"new folder {first}"
-        if "/" not in rel and not os.path.isfile(path):
-            return f"new file {first}"
+    if not (root / "dist/index.js").is_file() or (root / "dist").is_symlink():
+        return "missing or nonstandard frontend directory"
+    for name in tree:
+        if not name.startswith("dist/") and ("/" in name or not (root / name).is_file()):
+            return f"new package file {name}"
+    for name, skip in (("plugin.json", "publish"), ("package.json", "version")):
+        old = read_json(root / name) or {}
+        new = json.loads(tree[name])
+        if {k: v for k, v in old.items() if k != skip} != {k: v for k, v in new.items() if k != skip}:
+            return f"{name} changed"
+    for name, data in tree.items():
+        if name.startswith("dist/") or name in ("plugin.json", "package.json", "README.md", "test-record.json"):
+            continue
+        if (root / name).read_bytes() != data:
+            return f"{name} changed"
     return None
 
 
-def write_in_place(path, data):
-    with open(path, "r+b") as f:
-        f.write(data)
-        f.truncate()
-        f.flush()
-        os.fsync(f.fileno())
-
-
-def write_dist(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".vt-new"
-    with open(tmp, "wb") as f:
+def write_synced(path, data):
+    with path.open("xb") as f:
         f.write(data)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
 
 
-def files_under(root, sub):
-    out = {}
-    base = os.path.join(root, sub)
-    for d, _, names in os.walk(base):
-        for n in names:
-            full = os.path.join(d, n)
-            out[os.path.relpath(full, root).replace(os.sep, "/")] = full
-    return out
-
-
-def snapshot(root, tree):
-    snap = {}
-    for rel, full in files_under(root, "dist").items():
-        with open(full, "rb") as f:
-            snap[rel] = f.read()
-    for rel in tree:
-        if "/" not in rel and rel != "plugin.json":
-            with open(os.path.join(root, rel), "rb") as f:
-                snap[rel] = f.read()
-    return snap
-
-
-def apply_tree(root, tree):
-    for rel, data in tree.items():
-        if rel.startswith("dist/"):
-            write_dist(os.path.join(root, rel), data)
-    for rel, full in files_under(root, "dist").items():
-        if rel not in tree:
-            os.remove(full)
-    for d, subs, names in os.walk(os.path.join(root, "dist"), topdown=False):
-        if not subs and not names and d != os.path.join(root, "dist"):
-            os.rmdir(d)
-    for rel in sorted(r for r in tree if "/" not in r and r not in ("plugin.json", "main.py")):
-        if read_bytes(os.path.join(root, rel)) != tree[rel]:
-            write_in_place(os.path.join(root, rel), tree[rel])
-    write_in_place(os.path.join(root, "main.py"), tree["main.py"])
-
-
-def restore_tree(root, snap):
-    for rel, full in files_under(root, "dist").items():
-        if rel not in snap:
-            os.remove(full)
-    for rel, data in snap.items():
-        path = os.path.join(root, rel)
-        if rel.startswith("dist/"):
-            if read_bytes(path) != data:
-                write_dist(path, data)
-        elif read_bytes(path) != data:
-            write_in_place(path, data)
-
-
-def read_bytes(path):
+def sync_dir(directory):
+    fd = os.open(directory, os.O_DIRECTORY)
     try:
-        with open(path, "rb") as f:
-            return f.read()
-    except OSError:
-        return None
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def activate_frontend(dist, tree, version, digest):
+    lock = os.open(dist, os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        current = frontend_version(strict=True) or package_version()
+        if not version_tuple(current) or version_tuple(version) <= version_tuple(current):
+            raise ValueError(f"{version} is not newer than {current}")
+        name = f"vt-{version}-{digest}"
+        if len(name) > 180 or not re.fullmatch(PAYLOAD, name):
+            raise ValueError(f"invalid frontend version {version}")
+        os.fsync(lock)
+        payload = dist / name
+        if payload.exists():
+            shutil.rmtree(payload)
+        payload.mkdir()
+        for rel, data in tree.items():
+            if rel.startswith("dist/"):
+                path = payload / rel.removeprefix("dist/")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_synced(path, data)
+        entry = payload / ".vt-entry"
+        write_synced(
+            entry,
+            (
+                f'const bundle = new URL("./{name}/index.js", import.meta.url);\n'
+                "bundle.search = new URL(import.meta.url).search;\n"
+                "export default (await import(bundle.href)).default;\n"
+            ).encode(),
+        )
+        for directory, _, _ in os.walk(payload, topdown=False):
+            sync_dir(directory)
+        os.fsync(lock)
+        os.replace(entry, dist / "index.js")
+        os.fsync(lock)
+        try:
+            for child in dist.iterdir():
+                match = re.fullmatch(PAYLOAD, child.name)
+                if match and match[1] not in (current, version):
+                    shutil.rmtree(child)
+        except OSError as e:
+            decky.logger.warning("could not remove old frontend: %s", e)
+    finally:
+        os.close(lock)
 
 
 class Plugin:
@@ -324,10 +330,11 @@ class Plugin:
                     break
             prefs = self._prefs()
             try:
-                installed = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(os.path.join(plugin_dir(), "package.json"))))
+                filename = "dist/index.js" if frontend_version() else "package.json"
+                installed = time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(os.path.join(plugin_dir(), filename))))
             except OSError:
                 installed = None
-            version = (read_json(os.path.join(plugin_dir(), "package.json")) or {}).get("version")
+            version = installed_version()
             return {
                 "userWords": words,
                 "enabled": prefs["enabled"],
@@ -423,6 +430,7 @@ class Plugin:
         failed = u.get("failed") if (u.get("failed") or {}).get("version") == latest else None
         return {
             "current": current,
+            "packageVersion": package_version(),
             "latest": latest,
             "available": available,
             "htmlUrl": u.get("htmlUrl"),
@@ -463,6 +471,8 @@ class Plugin:
     async def install_update(self, version: str, auto: bool = False):
         async with self._update_lock():
             status = self._update_status()
+            if auto and not status["autoUpdate"]:
+                return {"ok": False, "cancelled": True}
             u = self._prefs().get("update") or {}
             if status["latest"] != version or not status["available"]:
                 return {"ok": False, "error": f"{version} is not a newer release"}
@@ -471,12 +481,15 @@ class Plugin:
             except Exception as e:
                 result = {"ok": False, "error": str(e)[:200]}
             if result.get("needsDecky"):
+                u.pop("failed", None)
                 u["needsDecky"] = {"version": version, "url": result["url"], "sha256": result["sha256"], "reason": result["reason"]}
-            elif not result["ok"]:
-                u["failed"] = {"version": version, "error": result["error"], "at": time.time()}
-            else:
+            elif result["ok"]:
+                u.pop("needsDecky", None)
                 u.pop("failed", None)
                 self._prefs()["updated"] = {"from": status["current"], "to": version, "at": time.time(), "auto": bool(auto)}
+            else:
+                u.pop("needsDecky", None)
+                u["failed"] = {"version": version, "error": result["error"], "at": time.time()}
             self._prefs()["update"] = u
             self._save_prefs()
             return result
@@ -494,23 +507,22 @@ class Plugin:
             compile(tree["main.py"], "main.py", "exec")
         except (SyntaxError, ValueError) as e:
             raise ValueError(f"main.py in {version} does not compile: {e}") from e
-        root = plugin_dir()
+        root = Path(plugin_dir())
         reason = needs_decky(tree, root)
-        if reason:
-            return {"ok": False, "needsDecky": True, "reason": reason, "url": PAGES_ZIP, "sha256": got, "version": version}
-        snap = snapshot(root, tree)
-        try:
-            apply_tree(root, tree)
-        except Exception as e:
+        if not reason:
             try:
-                restore_tree(root, snap)
-            except Exception as e2:
-                decky.logger.error("update restore failed: %s", e2)
-                return {"ok": False, "error": f"update failed ({e}) and the restore failed ({e2}); reinstall from Decky"}
-            decky.logger.warning("update to %s failed, restored: %s", version, e)
-            return {"ok": False, "error": f"update failed and was undone: {e}"}
-        decky.logger.info("updated to %s", version)
-        return {"ok": True, "version": version}
+                activate_frontend(root / "dist", tree, version, got)
+                return {"ok": True, "version": version}
+            except PermissionError:
+                reason = "Decky must write the frontend directory"
+        return {
+            "ok": False,
+            "needsDecky": True,
+            "reason": reason,
+            "url": PAGES_ZIP,
+            "sha256": got,
+            "version": version,
+        }
 
     async def take_update_record(self):
         rec = self._prefs().pop("updated", None)
